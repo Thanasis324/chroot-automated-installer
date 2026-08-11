@@ -89,3 +89,12 @@ If you are a developer or a power user tasked with debugging or extending this e
 *   **The Emulation Route:** Running x86 games requires FEX-Emu/Box64. This relies on the kernel flag `CONFIG_BINFMT_MISC=y` to automatically catch and translate x86 binaries.
 *   **The Native ARM64 Steam Route:** Even if you use a native ARM64 build of the Steam Client, **Steam will fail to launch** (`threadtools.cpp : Assertion Failed: Function not implemented`) on standard Android kernels.
 *   **The Kernel Requirement:** Valve's Steam engine intrinsically relies on legacy **System V IPC Semaphores** (`semget`). Android disables this globally for security. You **cannot** bypass this in a true chroot using `LD_PRELOAD` shims (like `libandroid-shmem`, which only handles shared memory, not semaphores). **You MUST flash a custom Android kernel with `CONFIG_SYSVIPC=y` compiled in** if you want Steam to boot.
+
+---
+
+## 🙏 Credits & Acknowledgments
+
+*   **[chroot-distro](https://github.com/sabamdarif/chroot-distro)**: This project is heavily reliant on the incredible work done by the `chroot-distro` project to provide native, high-performance containerization on Android.
+*   **[Termux](https://termux.dev/) & [Termux:X11](https://github.com/termux/termux-x11)**: For providing the core terminal environment and the robust X11 display server that makes the graphical interface possible.
+*   **[Mesa Project](https://www.mesa3d.org/)**: For the open-source Turnip (Vulkan) and Zink (OpenGL) drivers that bring true hardware acceleration to Adreno GPUs.
+*   **[XFCE](https://xfce.org/)**: For the lightweight, fast, and touch-friendly desktop environment used in this setup.
