@@ -1,0 +1,27 @@
+# Adreno 6xx and 7xx Hardware Acceleration Plan
+
+## 1. The Power of Turnip and Zink
+Unlike older architectures (like the 5xx series), the **Adreno 600** (e.g., Snapdragon 845, 865, 870) and **Adreno 700** (e.g., Snapdragon 8 Gen 1, 2, 3) series GPUs are the primary targets for the open-source **Mesa Turnip** driver project.
+
+This means these chips have access to **true, bare-metal hardware acceleration** inside the Linux chroot, bypassing software translation overhead entirely.
+
+## 2. How the Pipeline Works
+When you run Linux applications or games (especially through Box64/FEX or native Linux Steam), they output **OpenGL** commands. 
+However, Turnip is a **Vulkan** driver.
+
+To bridge this gap, we use **Zink**:
+1. **Application** asks to render an OpenGL frame.
+2. **Zink** instantly intercepts the OpenGL frame and translates it into Vulkan instructions.
+3. **Turnip** receives the Vulkan instructions and executes them natively on the Adreno 6xx/7xx hardware via the `kgsl` kernel backend.
+
+This stack is so efficient that it can run full PC games with incredible frame rates directly on your phone.
+
+## 3. How to Set It Up
+The `./setup.sh` script fully automates this pipeline.
+
+1. Run `./setup.sh`.
+2. When prompted for the GPU Architecture, select **Option 1: Adreno 8xx / 7xx / 6xx (Turnip + Zink)**.
+3. The script will automatically reach out to the `lfdevs/mesa-for-android-container` repository and inject highly-optimized, pre-compiled Turnip and Zink drivers (`vulkan-loader-generic`, `mesa-vulkan-icd-freedreno`, `mesa-zink`) directly into your chroot.
+4. It natively injects the required environment variables (`MESA_VK_WSI_DEBUG=sw`) to ensure the frames output correctly to the Termux:X11 display without crashing.
+
+You do not need VirGL for these chips; they run pure native acceleration!
