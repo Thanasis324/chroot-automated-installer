@@ -1,0 +1,9 @@
+Debian and Arch Linux Auto-Install Fixes
+
+- Goal: Make the Debian and Arch Linux setup scripts just as robust and seamless as the Fedora one.
+- Current Status: Fedora works perfectly, but Debian and Arch might be missing some package names, have different package managers (apt vs pacman) handling dependencies differently, or failing silently on certain steps.
+- Action Items:
+  1. Review `distro_setup.sh` and `fix_gpu.sh` for any `dnf` specific commands that don't have equivalent `apt-get` or `pacman` fallbacks.
+  2. Test a fresh Debian chroot install to see where it hangs or what dependencies are missed.
+  3. Test a fresh Arch Linux chroot install and ensure `pacman` keys and repos are correctly initialized before installation.
+  4. Unify the setup logic so all three OS options provide a 100% automated, single-click setup experience.

@@ -1,0 +1,8 @@
+Global Commands Integration Plan
+
+- Goal: Make the chroot launcher and utility scripts globally accessible from anywhere in the Termux terminal, without needing to `cd` into the installer directory.
+- Current Status: `setup.sh` currently copies `start-chroot.sh` to `$PREFIX/bin/startchroot`, which is a good start. However, other helper scripts (like `fix_gpu.sh`) are not globally accessible.
+- Action Items:
+  1. Add logic to `setup.sh` to symlink all utility scripts (e.g. `gpu-status`, `fix_gpu.sh`) directly into `$PREFIX/bin/` so the user can just type `fix-gpu` from anywhere.
+  2. Ensure the global commands correctly reference the project directory (using `dirname` logic or hardcoded paths) so they don't break when executed outside of `/data/data/com.termux/files/home/chroot-automated-installer`.
+  3. Ensure Termux `bashrc` aliases are set up cleanly if symlinks aren't sufficient.
