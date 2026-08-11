@@ -144,7 +144,7 @@ chmod +x /usr/local/bin/gpu-status
 
 cat << 'EOF' > /usr/local/bin/enable-zink
 #!/usr/bin/env bash
-export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json
+export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json:/etc/vulkan/icd.d/turnip_icd.json
 export GALLIUM_DRIVER=zink
 export MESA_LOADER_DRIVER_OVERRIDE=zink
 export MESA_GL_VERSION_OVERRIDE=4.6

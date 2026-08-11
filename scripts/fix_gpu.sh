@@ -167,7 +167,7 @@ case "$driver_choice" in
                 
                 # Critical Vulkan variables for Turnip on Adreno 7xx/8xx
                 if ! grep -q 'VK_ICD_FILENAMES' /etc/profile.d/termux_env.sh 2>/dev/null; then
-                    echo 'export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json' >> /etc/profile.d/termux_env.sh
+                    echo 'export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json:/etc/vulkan/icd.d/turnip_icd.json' >> /etc/profile.d/termux_env.sh
                 fi
                 if ! grep -q 'TU_DEBUG' /etc/profile.d/termux_env.sh 2>/dev/null; then
                     echo 'export TU_DEBUG=kgsl,noconform,nolrz' >> /etc/profile.d/termux_env.sh
