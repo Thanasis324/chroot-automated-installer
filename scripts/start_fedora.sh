@@ -99,7 +99,7 @@ echo -e "${GREEN}${BOLD}Launching ${SELECTED_DISTRO^^} Touch Desktop session for
 echo ""
 
 if [ "$DISTRO_CMD" = "chroot-distro" ]; then
-    CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix -- bash -c"
+    CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix --bind /data/data/com.termux/files/usr/tmp/.virgl_test:/tmp/.virgl_test -- bash -c"
 else
     CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- shared-tmp -- bash -c"
 fi

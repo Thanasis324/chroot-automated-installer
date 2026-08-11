@@ -1,26 +1,11 @@
-# Adreno 5xx (510) Hardware Acceleration Plan
+Adreno 5xx (e.g. A510) Support Notes
 
-## 1. The Reality of Turnip & Zink on A5xx
-The **Mesa Turnip** driver is an open-source Vulkan implementation that was specifically engineered from the ground up for the **Adreno 6xx, 7xx, and 8xx** series architectures. 
-Because the Adreno 500 series (like the Adreno 510) uses a fundamentally older and vastly different GPU instruction set, **Turnip physically cannot support Adreno 5xx devices**. 
+- Turnip/Zink won't work here. Turnip is hardcoded for Adreno 6xx+ architectures. The 500 series uses a completely different and older instruction set.
+- Since Turnip fails, Zink has nothing to translate to, so we can't use it.
+- Best fallback: VirGL.
+- VirGL takes the Linux OpenGL calls and passes them to the host Android OS's native GLES drivers. It's stable and performs decently for older chips.
 
-Since Turnip (Vulkan) cannot run on the hardware, **Zink** (which acts as a translator to convert OpenGL into Vulkan) is also completely non-functional on A5xx devices.
-
-## 2. The Optimal Solution: VirGL
-Because Turnip/Zink are off the table, the optimal and most stable way for your tester to get hardware acceleration on an Adreno 510 is to use **VirGL**.
-
-**How VirGL works:**
-VirGL acts as a middleman. Instead of trying to talk to the GPU metal directly (like Turnip does), VirGL takes the Linux Desktop OpenGL commands and translates them into standard **OpenGL ES** commands. It then passes these commands directly to the Android OS's native proprietary Adreno 510 drivers to execute. 
-
-This provides excellent 3D hardware acceleration for older devices without needing low-level kernel driver reverse-engineering.
-
-## 3. How to set it up for the Tester
-When your tester runs the `./setup.sh` installer, the script will attempt to detect the GPU. When it realizes it cannot use Turnip, it will prompt the user to select their architecture.
-
-**Your tester must do the following:**
-1. Run `./setup.sh` normally.
-2. When prompted for the GPU Architecture, they must select **Option 2: VirGL (Mali / PowerVR / Older Adreno / Tensor)**.
-3. The installer will automatically configure `termux-x11` and the chroot environment to launch the `virgl_test_server` in the background.
-4. When they boot into the desktop, the Linux environment will automatically route all graphics through VirGL to their Adreno 510!
-
-*(Note: If they experience visual glitches in specific PC games through VirGL, their only other fallback is pure CPU Software Rendering (LLVMpipe), which is perfectly stable but heavily reliant on CPU power).*
+Setup instructions for testers:
+1. Run `./setup.sh`
+2. When prompted for GPU Architecture, pick Option 2: VirGL.
+3. The script handles the rest (spins up `virgl_test_server` in termux, sets `GALLIUM_DRIVER=virpipe`, and binds the `.virgl_test` socket to the chroot).
