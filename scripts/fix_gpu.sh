@@ -95,7 +95,11 @@ chmod 666 /dev/dri/* 2>/dev/null || true
 
 case "$driver_choice" in
     1|2)
-        log_info "Ensuring latest Adreno Turnip/Zink drivers (lfdevs) are installed inside $SELECTED_DISTRO..."
+        if [ "$driver_choice" == "1" ]; then
+            log_info "Ensuring latest Adreno Turnip/Zink drivers (lfdevs) are installed inside $SELECTED_DISTRO..."
+        else
+            log_info "Ensuring latest Adreno Freedreno drivers (lfdevs) are installed inside $SELECTED_DISTRO..."
+        fi
         # Download and patch lfdevs mesa drivers directly inside the chroot
         $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c '
             # Clean up and ensure core dependencies exist (Heal broken GUI from previous removals)
@@ -155,7 +159,7 @@ case "$driver_choice" in
                 echo "[ERROR] Failed to fetch lfdevs download URL! You might be rate-limited by GitHub API."
                 echo "Skipping driver download, but dependencies have been repaired."
             fi
-        ' -- "$SELECTED_DISTRO"
+        ' -- "$SELECTED_DISTRO" "$driver_choice"
         
         if [ "$driver_choice" == "1" ]; then
             log_info "Configuring environment for Zink..."

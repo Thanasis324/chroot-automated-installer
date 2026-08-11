@@ -381,13 +381,16 @@ detect_gpu_architecture() {
             echo "  1. 8xx Series (e.g., Snapdragon 8 Elite, 8S Gen 4, 8 Elite Gen 5)"
             echo "  2. 7xx Series (e.g., Snapdragon 8 Gen 1, 8 Gen 2, 8 Gen 3, 7+ Gen 2)"
             echo "  3. 6xx Series (e.g., Snapdragon 845, 865, 870, 888)"
-            echo "  4. Other / Unsure (Defaults to stable 6xx configs)"
-            read -p "Select Adreno Series (1-4): " adreno_choice
+            echo "  4. 5xx Series or older (Native Freedreno OpenGL)"
+            echo "  5. Other / Unsure (Defaults to stable 6xx configs)"
+            read -p "Select Adreno Series (1-5): " adreno_choice
             
             if [ "$adreno_choice" == "1" ]; then
                 ADRENO_SERIES="A8XX"
             elif [ "$adreno_choice" == "2" ]; then
                 ADRENO_SERIES="A7XX"
+            elif [ "$adreno_choice" == "4" ]; then
+                ADRENO_SERIES="A5XX"
             else
                 ADRENO_SERIES="A6XX"
             fi
@@ -403,8 +406,13 @@ detect_gpu_architecture() {
     log_info "Detected Model ID: ${MODEL_NUM:-Unknown}"
 
     if [ "$IS_ADRENO" = "true" ]; then
-        log_success "Identified Qualcomm Adreno GPU (${ADRENO_SERIES:-A8XX})!"
-        log_success "Selected Turnip Freedreno Vulkan & Zink OpenGL ES Hardware Driver Set."
+        if [ "$ADRENO_SERIES" == "A5XX" ]; then
+            log_success "Identified Qualcomm Adreno GPU (A5XX)!"
+            log_success "Selected Native Freedreno OpenGL Hardware Driver Set."
+        else
+            log_success "Identified Qualcomm Adreno GPU (${ADRENO_SERIES:-A8XX})!"
+            log_success "Selected Turnip Freedreno Vulkan & Zink OpenGL ES Hardware Driver Set."
+        fi
     else
         log_warn "Non-Adreno GPU or software stack detected (${GPU_VENDOR:-Generic}). Selected LLVMpipe high-performance rendering fallback."
     fi
@@ -501,8 +509,12 @@ verify_and_finish() {
     " 2>/dev/null || echo "DRIVER_CHECK_OK")
 
     echo ""
-    if echo "$VERIFY_RESULT" | grep -q "DRIVER_TURNIP_PRESENT"; then
-        log_success "GPU Driver Verification Passed! Qualcomm Freedreno Turnip & Zink Vulkan stack active."
+    if [ "$VERIFY_RESULT" == "DRIVER_TURNIP_PRESENT" ]; then
+        if [ "$ADRENO_SERIES" == "A5XX" ]; then
+            log_success "GPU Driver Verification Passed! Qualcomm Freedreno Native OpenGL stack active."
+        else
+            log_success "GPU Driver Verification Passed! Qualcomm Freedreno Turnip & Zink Vulkan stack active."
+        fi
     else
         log_warn "GPU Driver loaded with standard graphics rendering layer."
     fi
@@ -527,7 +539,11 @@ verify_and_finish() {
     echo -e "${WHITE}3. Sudo Privileges:  ${GREEN}Granted (Passwordless sudo for $USERNAME)${WHITE}"
     echo -e "${WHITE}4. Audio Protocol:   ${GREEN}PulseAudio TCP (127.0.0.1:4713)${WHITE}"
     echo -e "${WHITE}5. Display Output:   ${GREEN}Termux:X11 (DISPLAY=:0)${WHITE}"
-    echo -e "${WHITE}6. GPU Driver:       ${GREEN}Turnip ${ADRENO_SERIES:-A8XX} (Vulkan/Zink Freedreno ARM64)${WHITE}"
+    if [ "$ADRENO_SERIES" == "A5XX" ]; then
+        echo -e "${WHITE}6. GPU Driver:       ${GREEN}Freedreno ${ADRENO_SERIES} (Native OpenGL ARM64)${WHITE}"
+    else
+        echo -e "${WHITE}6. GPU Driver:       ${GREEN}Turnip ${ADRENO_SERIES:-A8XX} (Vulkan/Zink Freedreno ARM64)${WHITE}"
+    fi
     echo -e "${WHITE}7. Desktop Env:      ${GREEN}Touch-Optimized XFCE4 Desktop (with Onboard virtual keyboard)${WHITE}"
     echo -e "${WHITE}8. Helper Utilities: ${GREEN}gpu-status, enable-zink, enable-freedreno, enable-software${WHITE}"
     echo "--------------------------------------------------------------------------------"
