@@ -66,9 +66,9 @@ Once installation finishes, start your system:
 
 ---
 
-## 🧠 For Advanced Users & AI Assistants
+## 🧠 For Advanced Users & Developers
 
-If you are a developer, a power user, or an AI assistant (like me!) tasked with debugging or extending this environment, here is the technical blueprint of how everything connects under the hood:
+If you are a developer or a power user tasked with debugging or extending this environment, here is the technical blueprint of how everything connects under the hood:
 
 **1. Installation & Boot Architecture**
 *   **The Chroot:** This setup completely bypasses PRoot and uses `chroot-distro` (requiring a rooted device) to communicate directly with the Android kernel for maximum bare-metal performance.
@@ -97,3 +97,18 @@ If you are a developer, a power user, or an AI assistant (like me!) tasked with 
 **1. "Container fedora is busy" or "/dev/null Permission Denied"**
 *   **Cause:** If your Android device undergoes a "soft reboot" (e.g. SurfaceFlinger or SystemUI crashes and restarts) while the chroot is active, Android's kernel does not restart. This leaves the `chroot-distro` mounts (like `/dev` and `/tmp`) orphaned and locked in a broken state.
 *   **Fix:** Do a full hardware restart of your phone. Rebooting the device will cleanly flush all orphaned kernel namespaces and mounts, allowing `./start-chroot.sh` to work perfectly again.
+
+---
+
+## 🙏 Credits & Acknowledgments
+
+*   **[chroot-distro](https://github.com/sabamdarif/chroot-distro)**: This project is heavily reliant on the incredible work done by the `chroot-distro` project to provide native, high-performance containerization on Android.
+*   **[Termux](https://termux.dev/) & [Termux:X11](https://github.com/termux/termux-x11)**: For providing the core terminal environment and the robust X11 display server that makes the graphical interface possible.
+*   **[Mesa Project](https://www.mesa3d.org/)**: For the open-source Turnip (Vulkan) and Zink (OpenGL) drivers that bring true hardware acceleration to Adreno GPUs.
+*   **[XFCE](https://xfce.org/)**: For the lightweight, fast, and touch-friendly desktop environment used in this setup.
+*   **[PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/)**: For enabling seamless audio streaming between the chroot and Android.
+*   **[VirGL](https://virgil3d.github.io/)**: For providing the fallback 3D acceleration for non-Adreno GPUs.
+*   **[Arc Theme](https://github.com/horst3180/arc-theme) & [Papirus Icons](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)**: For the sleek and beautiful dark mode desktop aesthetics.
+*   **[Onboard](https://launchpad.net/onboard)**: For the touch-optimized virtual keyboard that makes interacting with the desktop possible.
+*   **[Box64](https://box86.org/) & [FEX-Emu](https://fex-emu.com/)**: For their incredible x86 emulation technologies that make PC gaming possible on ARM devices.
+*   **Linux Distributions**: Thanks to the **[Fedora](https://fedoraproject.org/)**, **[Debian](https://www.debian.org/)**, and **[Arch Linux](https://archlinux.org/)** projects for their robust operating systems.
