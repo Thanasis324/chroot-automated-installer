@@ -66,9 +66,9 @@ Once installation finishes, start your system:
 
 ---
 
-## 🧠 For Advanced Users & AI Assistants
+## 🧠 For Advanced Users & Developers
 
-If you are a developer, a power user, or an AI assistant (like me!) tasked with debugging or extending this environment, here is the technical blueprint of how everything connects under the hood:
+If you are a developer or a power user tasked with debugging or extending this environment, here is the technical blueprint of how everything connects under the hood:
 
 **1. Installation & Boot Architecture**
 *   **The Chroot:** This setup completely bypasses PRoot and uses `chroot-distro` (requiring a rooted device) to communicate directly with the Android kernel for maximum bare-metal performance.
