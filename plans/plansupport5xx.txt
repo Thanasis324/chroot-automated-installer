@@ -1,11 +1,11 @@
 Adreno 5xx (e.g. A510) Support Notes
 
-- Turnip/Zink won't work here. Turnip is hardcoded for Adreno 6xx+ architectures. The 500 series uses a completely different and older instruction set.
-- Since Turnip fails, Zink has nothing to translate to, so we can't use it.
-- Best fallback: VirGL.
-- VirGL takes the Linux OpenGL calls and passes them to the host Android OS's native GLES drivers. It's stable and performs decently for older chips.
+- Turnip/Zink (Option 1) won't work here. Turnip is hardcoded for Adreno 6xx+ architectures. The 500 series uses a completely different and older instruction set.
+- Best fallback options:
+  - Option 2 (Freedreno): This provides Native OpenGL support specifically for older Adrenos over the kgsl backend. This should be your first choice for the A510.
+  - Option 3 (VirGL): If Freedreno fails on your specific firmware, use Option 3. VirGL takes the Linux OpenGL calls and passes them to the host Android OS's native GLES drivers. It's incredibly stable.
 
 Setup instructions for testers:
-1. Run `./setup.sh`
-2. When prompted for GPU Architecture, pick Option 2: VirGL.
-3. The script handles the rest (spins up `virgl_test_server` in termux, sets `GALLIUM_DRIVER=virpipe`, and binds the `.virgl_test` socket to the chroot).
+1. Run `./setup.sh` or run the GPU fixer (`./scripts/fix_gpu.sh`).
+2. When prompted for GPU Architecture, pick Option 2 (Freedreno). If that has graphical glitches, pick Option 3 (VirGL).
+3. The script handles all the heavy lifting in the background (like spinning up the `virgl_test_server` and automatically binding the `.virgl_test` socket if you select Option 3).
