@@ -170,9 +170,9 @@ case "$driver_choice" in
                     echo 'export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json' >> /etc/profile.d/termux_env.sh
                 fi
                 if ! grep -q 'TU_DEBUG' /etc/profile.d/termux_env.sh 2>/dev/null; then
-                    echo 'export TU_DEBUG=kgsl,noconform,sysmem,nolrz' >> /etc/profile.d/termux_env.sh
+                    echo 'export TU_DEBUG=kgsl,noconform,nolrz' >> /etc/profile.d/termux_env.sh
                 else
-                    sed -i 's/TU_DEBUG=.*/TU_DEBUG=kgsl,noconform,sysmem,nolrz/g' /etc/profile.d/termux_env.sh 2>/dev/null || true
+                    sed -i 's/TU_DEBUG=.*/TU_DEBUG=kgsl,noconform,nolrz/g' /etc/profile.d/termux_env.sh 2>/dev/null || true
                 fi
                 if ! grep -q 'ZINK_DESCRIPTORS=lazy' /etc/profile.d/termux_env.sh 2>/dev/null; then
                     echo 'export ZINK_DESCRIPTORS=lazy' >> /etc/profile.d/termux_env.sh
