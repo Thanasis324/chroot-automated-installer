@@ -11,8 +11,8 @@ An automated, touch-optimized, and graphically appealing installation script for
 - **Termux:X11** app installed.
 - **Rooted Device** (Required for `chroot-distro`).
 - **Recommended Termux:X11 Settings : **
--1)output -> Fullscreen : on
--2)pointer -> touchscreen input mode: Direct touch
+1)output -> Fullscreen : on
+2)pointer -> touchscreen input mode: Direct touch
 
 ### Installation Guide
 
