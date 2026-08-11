@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Master Launcher Script
+# NOTE: Run this script directly WITHOUT sudo!
+# ==============================================================================
+
+BOLD="\033[1m"
+CYAN="\033[38;5;51m"
+YELLOW="\033[38;5;226m"
+RESET="\033[0m"
+
+PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
+INSTALLED_DISTROS=()
+
+# First attempt: parse the 'list' command output directly
+if command -v $DISTRO_CMD &>/dev/null; then
+    while read -r line; do
+        if echo "$line" | grep -qi "installed"; then
+            name=$(echo "$line" | sed -E 's/^[^a-zA-Z0-9]*([a-zA-Z0-9_-]+).*/\1/')
+            # Ensure we only pick up supported ones
+            if [[ "$name" == "debian" || "$name" == "fedora" || "$name" == "archlinux" ]]; then
+                INSTALLED_DISTROS+=("$name")
+            fi
+        fi
+    done < <($DISTRO_CMD list 2>/dev/null)
+fi
+
+# Fallback: Check known paths if list command parsing fails
+if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
+    for d in debian fedora archlinux; do
+        if [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ] || \
+           [ -d "/data/local/chroot-distro/$d" ]; then
+            INSTALLED_DISTROS+=("$d")
+        fi
+    done
+fi
+
+
+if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
+    echo -e "${YELLOW}Warning: Could not automatically detect installed distros.${RESET}"
+    echo -e "${CYAN}${BOLD}Please select which environment to launch, or run the installer:${RESET}"
+    echo "  1. fedora"
+    echo "  2. debian"
+    echo "  3. archlinux"
+    echo "  4. I haven't run setup.sh yet (Run installer now)"
+    read -p "Select a number (1-4): " fallback_choice
+    
+    case "$fallback_choice" in
+        1) SELECTED_DISTRO="fedora" ;;
+        2) SELECTED_DISTRO="debian" ;;
+        3) SELECTED_DISTRO="archlinux" ;;
+        4) 
+            echo -e "${GREEN}Starting installer...${RESET}"
+            chmod +x ./setup.sh 2>/dev/null || true
+            exec ./setup.sh
+            ;;
+        *) 
+            echo -e "${RED}Invalid choice. Exiting.${RESET}"
+            exit 1 
+            ;;
+    esac
+else
+    if [ ${#INSTALLED_DISTROS[@]} -eq 1 ]; then
+        SELECTED_DISTRO="${INSTALLED_DISTROS[0]}"
+    else
+        echo -e "${CYAN}${BOLD}Multiple OS environments detected. Please select which one to launch:${RESET}"
+        for i in "${!INSTALLED_DISTROS[@]}"; do
+            echo -e "  $((i+1)). ${INSTALLED_DISTROS[$i]}"
+        done
+        read -p "Select a number (1-${#INSTALLED_DISTROS[@]}): " choice
+        if [[ "$choice" =~ ^[0-9]+$ ]] && [ "$choice" -ge 1 ] && [ "$choice" -le "${#INSTALLED_DISTROS[@]}" ]; then
+            SELECTED_DISTRO="${INSTALLED_DISTROS[$((choice-1))]}"
+        else
+            SELECTED_DISTRO="${INSTALLED_DISTROS[0]}"
+            echo "Invalid choice. Defaulting to $SELECTED_DISTRO."
+        fi
+    fi
+fi
+
+# Locate and execute the sub-script
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+if [ -z "$SCRIPT_DIR" ]; then SCRIPT_DIR="$PWD"; fi
+
+if [ -f "$SCRIPT_DIR/scripts/start_${SELECTED_DISTRO}.sh" ]; then
+    exec bash "$SCRIPT_DIR/scripts/start_${SELECTED_DISTRO}.sh" "$@"
+elif [ -f "$HOME/Termux Script/scripts/start_${SELECTED_DISTRO}.sh" ]; then
+    exec bash "$HOME/Termux Script/scripts/start_${SELECTED_DISTRO}.sh" "$@"
+else
+    echo -e "${YELLOW}Error: Sub-script for ${SELECTED_DISTRO} not found at expected paths!${RESET}"
+    exit 1
+fi
