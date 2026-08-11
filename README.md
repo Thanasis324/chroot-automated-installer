@@ -10,8 +10,13 @@ An automated, touch-optimized, and graphically appealing installation script for
 - **Termux** app installed.
 - **Termux:X11** app installed.
 - **Rooted Device** (Required for `chroot-distro`).
+- **Recommended Termux:X11 Settings : **
+1)output -> Fullscreen : on
+2)pointer -> touchscreen input mode: Direct touch
 
-### Step 1: Clone the Repository
+### Installation Guide
+
+#### Step 1: Clone the Repository
 Open Termux and install Git, then clone this repository:
 ```bash
 pkg install git -y
@@ -19,19 +24,19 @@ git clone https://github.com/Thanasis324/chroot-automated-installer.git
 cd chroot-automated-installer
 ```
 
-### Step 2: Set Permissions
+#### Step 2: Set Permissions
 Make all the installation and boot scripts executable:
 ```bash
 chmod +x setup.sh start-chroot.sh uninstall.sh scripts/*.sh
 ```
 
-### Step 3: Launch Installer
+#### Step 3: Launch Installer
 Run the setup script directly as your standard Termux user (**Do NOT run with sudo!** The script intelligently elevates privileges automatically when needed):
 ```bash
 ./setup.sh
 ```
 
-### Step 3: Interactive Setup & Mirror Selection
+#### Step 4: Interactive Setup & Mirror Selection
 The script features an advanced setup UI that will guide you through:
 1. **Repository Mirror Selection**: Automatically launches `termux-change-repo` so you can select the fastest mirror for your region.
 2. **Linux Distribution Selection**: 
@@ -41,7 +46,7 @@ The script features an advanced setup UI that will guide you through:
 3. **Desired Username & Password**
 4. **GPU Architecture Fallback**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx** or **VirGL (Mali/PowerVR/Exynos/Tensor)**.
 
-### Step 4: Launch your Touch Desktop (Do NOT use sudo!)
+#### Step 5: Launch your Touch Desktop (Do NOT use sudo!)
 Once installation finishes, start your system:
 1. Open the **Termux:X11** app on your Android device.
 2. Launch the desktop directly as a regular Termux user:
