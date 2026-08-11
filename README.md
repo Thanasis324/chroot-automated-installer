@@ -54,7 +54,8 @@ Once installation finishes, start your system:
 ## 🌟 Key Features
 
 1. **Native Chroot Performance**: Built exclusively around `chroot-distro` for true native hardware mounting, ensuring maximum performance compared to PRoot environments.
-2. **Advanced Adreno GPU Stack**:
+2. **Native Bluetooth Gamepad Support**: Automatically maps Android's secure input groups (`aid_input`) into the chroot and runs a lightweight background daemon to bypass missing `udev` dependencies. Xbox, PlayStation (DualShock/DualSense), Nintendo, and generic Bluetooth controllers work natively in Linux games without root hacks!
+3. **Advanced Adreno GPU Stack**:
    - Accurately detects and maps Qualcomm Adreno GPUs, supporting **6xx**, **7xx**, and the bleeding-edge **8xx Series** (e.g., Snapdragon 8 Elite, 8S Gen 4).
    - Installs the complete official Khronos Vulkan pipeline (`vulkan-loader-generic`, `mesa-vulkan-icd-freedreno`, `mesa-zink`) to bypass generic software rendering.
    - Provides a guaranteed **VirGL** fallback renderer for non-Adreno chipsets (Mali, PowerVR, Exynos Xclipse, Google Tensor).

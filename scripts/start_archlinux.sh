@@ -90,6 +90,9 @@ $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
     if ! pgrep -f 'dbus-daemon.*system' >/dev/null 2>&1 || [ ! -S /run/dbus/system_bus_socket ]; then
         dbus-daemon --system --fork 2>/dev/null || service dbus start 2>/dev/null || true
     fi
+    if [ -x /usr/local/bin/termux-udevd ] && ! pgrep -f termux-udevd >/dev/null 2>&1; then
+        /usr/local/bin/termux-udevd >/dev/null 2>&1 &
+    fi
 "
 
 echo -e "${GREEN}${BOLD}Launching ${SELECTED_DISTRO^^} Touch Desktop session for user: ${YELLOW}$CHROOT_USER${GREEN}...${RESET}"
@@ -118,4 +121,7 @@ $CMD_PREFIX "
     else
         xfce4-session || startxfce4
     fi
+    
+    # Clean up the background gamepad daemon when the desktop session ends
+    pkill -f termux-udevd 2>/dev/null || true
 "

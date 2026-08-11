@@ -75,7 +75,7 @@ echo "$USERNAME:$PASSWORD" | chpasswd
 echo "root:$PASSWORD" | chpasswd
 
 # Add user to hardware and permission groups
-usermod -aG sudo,video,audio,render,input,aid_graphics,graphics "$USERNAME" 2>/dev/null || true
+usermod -aG sudo,video,audio,render,input,aid_graphics,graphics,aid_input,aid_bluetooth "$USERNAME" 2>/dev/null || true
 
 # Grant Sudo privileges without password prompt for touch convenience
 mkdir -p /etc/sudoers.d
