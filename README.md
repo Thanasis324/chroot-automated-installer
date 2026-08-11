@@ -80,6 +80,7 @@ If you are a developer or a power user tasked with debugging or extending this e
 *   **The Hardware Bridge:** Adreno GPUs (especially the 8xx series like Snapdragon 8s Gen 4 / 8 Elite) use the **Turnip** Vulkan ICD (`freedreno_icd.aarch64.json`). OpenGL is layered on top of Vulkan using the **Zink** gallium driver.
 *   **Critical Vulkan/X11 Fix (`MESA_VK_WSI_DEBUG=sw`):** Termux:X11 operates over a socket and cannot natively ingest hardware DMA-BUF surfaces from Turnip. To prevent `CreateSwapchainKHR` and `GLXBadCurrentWindow` crashes in applications, we forcefully inject `MESA_VK_WSI_DEBUG=sw`. This commands Mesa's Window System Integration to utilize a software shared-memory buffer to present the final hardware-rendered frame to X11.
 *   **Adreno 8xx Stability:** Modern Adreno chips frequently hang on experimental Turnip drivers. We stabilize them by injecting `TU_DEBUG=kgsl,noconform,nolrz`.
+*   **Software Rendering & CPU Compatibility:** When falling back to `LLVMpipe`, modern ARM CPUs may falsely report SVE capabilities, causing illegal instruction crashes (`SIGILL`) in 3D apps. We inject `GALLIVM_PERF=nopt` to disable these buggy JIT optimizations. Additionally, `OPENSSL_armcap=0` is set to prevent `libcrypto` from crashing during hardware capability probing on newer Snapdragon chips.
 *   **Helper Scripts:** The environment generates `/usr/local/bin/enable-zink` and `/usr/local/bin/enable-freedreno` to allow users to hot-swap graphics stacks via bash aliases if an application misbehaves.
 
 **3. Desktop Environment (XFCE4) & Compositing**

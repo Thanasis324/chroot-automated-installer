@@ -98,6 +98,8 @@ mkdir -p $XDG_RUNTIME_DIR
 chmod 700 $XDG_RUNTIME_DIR
 
 export MESA_VK_WSI_DEBUG=sw
+export OPENSSL_armcap=0
+export GALLIVM_PERF=nopt
 EOF
 
 chmod +x /etc/profile.d/termux_env.sh

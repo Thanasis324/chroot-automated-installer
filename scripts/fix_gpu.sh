@@ -23,15 +23,16 @@ else
     exit 1
 fi
 
-SELECTED_DISTRO=""
-if [ -f "$HOME/.chroot_distro" ]; then
-    SELECTED_DISTRO=$(cat "$HOME/.chroot_distro" | tr -d '\r\n')
-elif [ -f "/data/data/com.termux/files/home/.chroot_distro" ]; then
-    SELECTED_DISTRO=$(cat "/data/data/com.termux/files/home/.chroot_distro" | tr -d '\r\n')
+if [ -z "$SELECTED_DISTRO" ]; then
+    if [ -f "$HOME/.chroot_distro" ]; then
+        SELECTED_DISTRO=$(cat "$HOME/.chroot_distro" | tr -d '\r\n')
+    elif [ -f "/data/data/com.termux/files/home/.chroot_distro" ]; then
+        SELECTED_DISTRO=$(cat "/data/data/com.termux/files/home/.chroot_distro" | tr -d '\r\n')
+    fi
 fi
 
 # Validate or auto-detect if the saved distro doesn't exist
-if [ -z "$SELECTED_DISTRO" ] || ! $DISTRO_CMD list 2>/dev/null | grep -q "${SELECTED_DISTRO}.*installed"; then
+if [ -z "$SELECTED_DISTRO" ]; then
     INSTALLED_DISTROS=()
     while read -r line; do
         if echo "$line" | grep -qi "installed"; then
@@ -106,9 +107,10 @@ case "$driver_choice" in
                     cd /tmp
                     rm -rf gl4es
                     git clone https://github.com/ptitSeb/gl4es.git >/dev/null 2>&1
-                    cd gl4es/build || { mkdir -p build && cd build; }
+                    cd gl4es
+                    mkdir -p build && cd build
                     cmake .. -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1
-                    make -j\$(nproc) >/dev/null 2>&1
+                    make -j$(nproc) >/dev/null 2>&1
                     mkdir -p /usr/local/lib
                     cp lib/libGL.so.1 /usr/local/lib/
                     ln -sf /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so
