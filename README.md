@@ -44,7 +44,7 @@ The script features an advanced setup UI that will guide you through:
    - **Debian** *(Highly stable core)*
    - **Archlinux** *(For advanced rolling-release users)*
 3. **Desired Username & Password**
-4. **GPU Architecture Fallback**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx** or **VirGL (Mali/PowerVR/Exynos/Tensor)**.
+4. **GPU Architecture Fallback**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx/5xx** or **VirGL (Mali/PowerVR/Exynos/Tensor)**.
 
 #### Step 5: Launch your Touch Desktop (Do NOT use sudo!)
 Once installation finishes, start your system:
