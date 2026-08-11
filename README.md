@@ -6,14 +6,26 @@ An automated, touch-optimized, and graphically appealing installation script for
 
 ## 🚀 How to Run in Termux
 
-### Step 1: Open Termux & Prepare Files
-Extract/Place the files into your Termux home directory:
+### Prerequisites
+- **Termux** app installed.
+- **Termux:X11** app installed.
+- **Rooted Device** (Required for `chroot-distro`).
+
+### Step 1: Clone the Repository
+Open Termux and install Git, then clone this repository:
 ```bash
-cd ~
-chmod +x setup.sh uninstall.sh scripts/*.sh
+pkg install git -y
+git clone https://github.com/Thanasis324/chroot-automated-installer.git
+cd chroot-automated-installer
 ```
 
-### Step 2: Launch Installer
+### Step 2: Set Permissions
+Make all the installation and boot scripts executable:
+```bash
+chmod +x setup.sh start-chroot.sh uninstall.sh scripts/*.sh
+```
+
+### Step 3: Launch Installer
 Run the setup script directly as your standard Termux user (**Do NOT run with sudo!** The script intelligently elevates privileges automatically when needed):
 ```bash
 ./setup.sh
@@ -54,7 +66,10 @@ Once installation finishes, start your system:
 ## 🌟 Key Features
 
 1. **Native Chroot Performance**: Built exclusively around `chroot-distro` for true native hardware mounting, ensuring maximum performance compared to PRoot environments.
-2. **Native Bluetooth Gamepad Support**: Automatically maps Android's secure input groups (`aid_input`) into the chroot and runs a lightweight background daemon to bypass missing `udev` dependencies. Xbox, PlayStation (DualShock/DualSense), Nintendo, and generic Bluetooth controllers work natively in Linux games without root hacks!
+2. **Native Bluetooth Gamepad Support**: Automatically maps Android's secure input groups (`aid_input`) into the chroot and runs a lightweight background `termux-udevd` daemon to bypass missing `udev` dependencies. 
+   - Xbox, PlayStation (DualShock/DualSense), Nintendo, 8BitDo, GameSir, and generic Bluetooth controllers work natively in Linux games without root hacks!
+   - Full support for **Rumble (Force-Feedback)** and LED controls via automated secure permission injections (`chmod 666`).
+   - Disables aggressive SDL HIDAPI polling so controllers flawlessly fall back to standard `evdev`.
 3. **Advanced Adreno GPU Stack**:
    - Accurately detects and maps Qualcomm Adreno GPUs, supporting **6xx**, **7xx**, and the bleeding-edge **8xx Series** (e.g., Snapdragon 8 Elite, 8S Gen 4).
    - Installs the complete official Khronos Vulkan pipeline (`vulkan-loader-generic`, `mesa-vulkan-icd-freedreno`, `mesa-zink`) to bypass generic software rendering.
@@ -62,6 +77,8 @@ Once installation finishes, start your system:
 3. **Smart Privilege Dropping**: Setup script safely navigates Termux's root constraints by using `su -c` dropping mechanisms and raw `apt full-upgrade` commands to prevent `pkg` crashes on fresh installs.
 4. **Touch-Optimized XFCE4 Environment**:
    - Pre-configures a sleek system-wide Dark Mode scenario (**Arc-Dark GTK theme** & **Papirus-Dark icons**).
+   - **Single-Click UI**: Desktop icons and Thunar File Manager are pre-configured to open with a single tap, drastically improving the touchscreen experience.
+   - **Shutdown OS**: Bypasses systemd constraints by injecting a custom "Shutdown OS" desktop shortcut that elegantly terminates the XFCE session and cleanly unmounts the chroot from Termux.
    - Bundles the **Onboard Virtual Keyboard** pre-configured to autostart, dock cleanly, and dynamically appear for text input.
 5. **Secure DBus & Audio Isolation**: Uses `XDG_RUNTIME_DIR=/tmp/runtime-$USER` inside isolated DBus sessions to guarantee perfectly stable XFCE4 boots every time.
 
