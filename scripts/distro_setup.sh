@@ -100,6 +100,10 @@ chmod 700 $XDG_RUNTIME_DIR
 export MESA_VK_WSI_DEBUG=sw
 export OPENSSL_armcap=0
 export GALLIVM_PERF=nopt
+
+# Disable SDL HIDAPI dualshock/dualsense drivers to force evdev (fake_udev) usage
+export SDL_JOYSTICK_HIDAPI_PS4=0
+export SDL_JOYSTICK_HIDAPI_PS5=0
 EOF
 
 chmod +x /etc/profile.d/termux_env.sh
@@ -212,7 +216,68 @@ cat << 'EOF' > "$USER_HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
 </channel>
 EOF
 
-# Create Autostart script to forcefully disable XFCE compositor on login to protect Zink
+# Configure Single-Click for Desktop Icons (Touch friendly)
+cat << 'EOF' > "$USER_HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-desktop.xml"
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="xfce4-desktop" version="1.0">
+  <property name="desktop-icons" type="empty">
+    <property name="single-click" type="bool" value="true"/>
+  </property>
+</channel>
+EOF
+
+# Configure Single-Click for Thunar File Manager
+cat << 'EOF' > "$USER_HOME/.config/xfce4/xfconf/xfce-perchannel-xml/thunar.xml"
+<?xml version="1.0" encoding="UTF-8"?>
+<channel name="thunar" version="1.0">
+  <property name="misc-single-click" type="bool" value="true"/>
+</channel>
+EOF
+# --- 5.5 Fake UDEV Daemon for Gamepads ---
+cat << 'EOF' > /usr/local/bin/termux-udevd
+#!/bin/bash
+mkdir -p /run/udev/data
+while true; do
+    for dev in /sys/class/input/event*; do
+        if [ -d "$dev" ]; then
+            # Filter for Gamepads to prevent mapping Mice/Keyboards/Headsets
+            # Converts everything to lowercase to perfectly handle capitalization
+            dev_name=$(cat "$dev/device/name" 2>/dev/null | tr '[:upper:]' '[:lower:]')
+            if echo "$dev_name" | grep -iqE "xbox|playstation|dualshock|dualsense|nintendo|controller|gamepad|joy-con|8bitdo|gamesir|ipega|razer|logitech|flydigi|machenike|steam"; then
+                major_minor=$(cat "$dev/dev" 2>/dev/null)
+                if [ -n "$major_minor" ]; then
+                    cat <<UDEV > "/run/udev/data/c$major_minor"
+I:1234567
+E:ID_INPUT=1
+E:ID_INPUT_JOYSTICK=1
+UDEV
+                    # Force read/write permissions for the gamepad node
+                    chmod 666 "/dev/input/$(basename "$dev")" 2>/dev/null || true
+                fi
+            fi
+        fi
+    done
+    sleep 10
+done
+EOF
+chmod +x /usr/local/bin/termux-udevd
+
+# --- 5.6 Shutdown OS Shortcut ---
+cat << 'EOF' > "$USER_HOME/Desktop/Shutdown OS.desktop"
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Shutdown OS
+Comment=Safely shutdown the Linux environment
+Exec=bash -c "touch ~/.do_shutdown && xfce4-session-logout --logout"
+Icon=system-shutdown
+Terminal=false
+Categories=System;
+EOF
+chmod +x "$USER_HOME/Desktop/Shutdown OS.desktop"
+cp "$USER_HOME/Desktop/Shutdown OS.desktop" "/usr/share/applications/termux-shutdown.desktop" 2>/dev/null || true
+
+# --- 6. XFCE4 Compositor Disable ---
 cat << 'EOF' > "$USER_HOME/.config/autostart/disable-compositor.desktop"
 [Desktop Entry]
 Type=Application

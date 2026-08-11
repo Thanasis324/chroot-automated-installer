@@ -124,4 +124,12 @@ $CMD_PREFIX "
     
     # Clean up the background gamepad daemon when the desktop session ends
     pkill -f termux-udevd 2>/dev/null || true
+    chmod 660 /dev/input/event* 2>/dev/null || true
 "
+
+# If the Shutdown shortcut was used, trigger the container kill
+if $DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- bash -c "[ -f ~/.do_shutdown ]" 2>/dev/null; then
+    $DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- bash -c "rm -f ~/.do_shutdown" 2>/dev/null
+    echo -e "${RED}${BOLD}Shutting down ${SELECTED_DISTRO} environment...${RESET}"
+    $DISTRO_CMD kill $SELECTED_DISTRO
+fi

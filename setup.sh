@@ -87,7 +87,14 @@ install_all_dependencies() {
         fi
     }
 
-    # Attempt to use standard Termux package manager safely
+    echo ""
+    echo -e "${CYAN}${BOLD}Would you like to install dependencies automatically?${RESET}"
+    echo -e "${YELLOW}(Recommended Y for first time install. Select N to skip if already installed)${RESET}"
+    read -p "Install dependencies? [Y/n]: " install_deps
+    
+    if [[ "$install_deps" =~ ^[Yy]$ ]] || [[ -z "$install_deps" ]]; then
+
+        # Attempt to use standard Termux package manager safely
     log_info "Updating Termux package lists (apt update && apt full-upgrade)..."
     
     # First use apt directly to bypass curl/pkg errors on fresh installs
@@ -168,7 +175,10 @@ install_all_dependencies() {
     PREFIX_BIN="${PREFIX:-/data/data/com.termux/files/usr}/bin"
     export PATH="$PATH:$HOME/.local/bin:$PREFIX_BIN:/system/bin"
 
-    log_success "All Termux dependencies installed successfully."
+        log_success "All Termux dependencies installed successfully."
+    else
+        log_info "Skipping dependency installation..."
+    fi
 }
 
 # --- Step 2: Check Root Privileges & Elevation (Run BEFORE Credentials Prompt) ---
