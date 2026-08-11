@@ -84,7 +84,7 @@ fi
 echo -e "${CYAN}${BOLD}Please select the graphics driver backend you want to apply to ${SELECTED_DISTRO}:${RESET}"
 echo "  1. Zink (Vulkan to OpenGL) - Best for Adreno 6xx, 7xx, 8xx"
 echo "  2. Freedreno (Native OpenGL) - Best for older Adrenos or if Zink fails"
-echo "  3. VirGL - Required for Mali, PowerVR, Exynos chipsets"
+echo "  3. VirGL - Required for Mali, PowerVR, Exynos, Tensor chipsets"
 echo "  4. LLVMpipe - Software Rendering (Slowest, maximum compatibility)"
 read -p "Select driver (1-4): " driver_choice
 
@@ -207,7 +207,7 @@ case "$driver_choice" in
         fi
         ;;
     3)
-        log_info "Configuring environment for VirGL (Mali/PowerVR/Exynos)..."
+        log_info "Configuring environment for VirGL (Mali/PowerVR/Exynos/Tensor)..."
         $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
             if ! grep -q 'GALLIUM_DRIVER' /etc/profile.d/termux_env.sh 2>/dev/null; then
                 echo 'export GALLIUM_DRIVER=virpipe' >> /etc/profile.d/termux_env.sh

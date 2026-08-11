@@ -27,7 +27,7 @@ The script features an advanced setup UI that will guide you through:
    - **Debian** *(Highly stable core)*
    - **Archlinux** *(For advanced rolling-release users)*
 3. **Desired Username & Password**
-4. **GPU Architecture Fallback**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx** or **VirGL (Mali/PowerVR/Exynos)**.
+4. **GPU Architecture Fallback**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx** or **VirGL (Mali/PowerVR/Exynos/Tensor)**.
 
 ### Step 4: Launch your Touch Desktop (Do NOT use sudo!)
 Once installation finishes, start your system:
@@ -57,7 +57,7 @@ Once installation finishes, start your system:
 2. **Advanced Adreno GPU Stack**:
    - Accurately detects and maps Qualcomm Adreno GPUs, supporting **6xx**, **7xx**, and the bleeding-edge **8xx Series** (e.g., Snapdragon 8 Elite, 8S Gen 4).
    - Installs the complete official Khronos Vulkan pipeline (`vulkan-loader-generic`, `mesa-vulkan-icd-freedreno`, `mesa-zink`) to bypass generic software rendering.
-   - Provides a guaranteed **VirGL** fallback renderer for non-Adreno chipsets (Mali, PowerVR, Exynos Xclipse).
+   - Provides a guaranteed **VirGL** fallback renderer for non-Adreno chipsets (Mali, PowerVR, Exynos Xclipse, Google Tensor).
 3. **Smart Privilege Dropping**: Setup script safely navigates Termux's root constraints by using `su -c` dropping mechanisms and raw `apt full-upgrade` commands to prevent `pkg` crashes on fresh installs.
 4. **Touch-Optimized XFCE4 Environment**:
    - Pre-configures a sleek system-wide Dark Mode scenario (**Arc-Dark GTK theme** & **Papirus-Dark icons**).
