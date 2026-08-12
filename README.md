@@ -14,6 +14,7 @@ An automated, touch-optimized, and graphically appealing installation script for
 - **Recommended Termux:X11 Settings:**
   1. Output ➔ **Fullscreen**: `on`
   2. Pointer ➔ **Touchscreen input mode**: `Direct touch`
+  3. Keyboard ➔ **Show additional keyboard**: `off`
 
 ### Installation Guide
 
