@@ -223,26 +223,16 @@ case "$driver_choice" in
             if command -v dnf >/dev/null 2>&1; then
                 echo "Running dnf install..."
                 dnf install -y mesa-libGL mesa-dri-drivers mesa-vulkan-drivers vulkan-loader @xfce-desktop-environment libdisplay-info git cmake gcc gcc-c++ make libX11-devel libXext-devel mesa-libEGL-devel >/dev/null 2>&1
+                # Remove broken gl4es wrapper if it exists
+                rm -f /usr/local/lib/libGL.so* 2>/dev/null || true
             elif command -v apt-get >/dev/null 2>&1; then
                 echo "Running apt-get install..."
-                apt-get install -y libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 xfce4 xfwm4 git cmake gcc g++ make libx11-dev libxext-dev libegl1-mesa-dev libdisplay-info-dev >/dev/null 2>&1 || true
+                rm -f /etc/apt/sources.list.d/gfx-ci.list
+                echo "deb http://deb.debian.org/debian experimental main" > /etc/apt/sources.list.d/experimental.list
+                apt-get update >/dev/null 2>&1
+                apt-get install -y -t experimental libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 xfce4 xfwm4 libdisplay-info-dev >/dev/null 2>&1 || true
             elif command -v pacman >/dev/null 2>&1; then
-                echo "Running pacman install..."
-                pacman -Sy --noconfirm vulkan-freedreno vulkan-swrast vulkan-mesa-layers vulkan-icd-loader xfce4 xfwm4 libdisplay-info git cmake gcc make libx11 libxext mesa >/dev/null 2>&1 || true
-            fi
-            
-            if [ ! -f /usr/local/lib/libGL.so.1 ]; then
-                echo "Compiling gl4es for native OpenGL wrapper support..."
-                cd /tmp
-                rm -rf gl4es
-                git clone https://github.com/ptitSeb/gl4es.git >/dev/null 2>&1
-                cd gl4es
-                mkdir -p build && cd build
-                cmake .. -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1
-                make -j$(nproc) >/dev/null 2>&1
-                mkdir -p /usr/local/lib
-                cp lib/libGL.so.1 /usr/local/lib/
-                ln -sf /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so
+                pacman -Sy --noconfirm vulkan-freedreno vulkan-swrast vulkan-mesa-layers vulkan-icd-loader xfce4 xfwm4 libdisplay-info >/dev/null 2>&1 || true
             fi
             
             # Failsafe: Symlink libdisplay-info if the host provides a different ABI version than lfdevs expects
@@ -256,7 +246,14 @@ case "$driver_choice" in
                 (cd /usr/lib/aarch64-linux-gnu && ln -sf $(basename $(ls libdisplay-info.so.* | grep -v "\.so\.2$" | head -n 1)) libdisplay-info.so.2)
             fi
             
-            if [ "$1" = "fedora" ]; then LFDEVS_PATTERN="fedora_.*_arm64\.tar\.gz"; elif [ "$1" = "archlinux" ]; then LFDEVS_PATTERN="archlinux_arm64\.tar"; else LFDEVS_PATTERN="debian_.*_arm64\.tar\.gz"; fi
+            if [ "$1" = "fedora" ]; then
+                FEDORA_VER=$(grep -oP "(?<=^VERSION_ID=).+" /etc/os-release | tr -d \")
+                LFDEVS_PATTERN="fedora_${FEDORA_VER}_arm64\.tar\.gz"
+            elif [ "$1" = "archlinux" ]; then
+                LFDEVS_PATTERN="archlinux_arm64\.tar"
+            else
+                LFDEVS_PATTERN="debian_trixie_arm64\.tar\.gz"
+            fi
             DOWNLOAD_URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | grep -o "\"browser_download_url\": \"[^\"]*\"" | cut -d"\"" -f4 | grep -iE "$LFDEVS_PATTERN" | head -n 1)
             
             if [ -n "$DOWNLOAD_URL" ]; then
@@ -302,17 +299,21 @@ case "$driver_choice" in
                 fi
                 if ! grep -q 'ZINK_DESCRIPTORS=lazy' /etc/profile.d/termux_env.sh 2>/dev/null; then
                     echo 'export ZINK_DESCRIPTORS=lazy' >> /etc/profile.d/termux_env.sh
+                    echo 'export ZINK_DEBUG=compact' >> /etc/profile.d/termux_env.sh
                     echo 'export MESA_GL_VERSION_OVERRIDE=4.6' >> /etc/profile.d/termux_env.sh
                     echo 'export MESA_GLES_VERSION_OVERRIDE=3.2' >> /etc/profile.d/termux_env.sh
                     echo 'export MESA_VK_WINSYS=x11' >> /etc/profile.d/termux_env.sh
                     echo 'export MESA_VK_WSI_DEBUG=sw' >> /etc/profile.d/termux_env.sh
-                    echo 'export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH' >> /etc/profile.d/termux_env.sh
                 fi
+                
+                # Flush broken shader caches to heal bugged environments
+                rm -rf /home/*/.cache/mesa_shader_cache /root/.cache/mesa_shader_cache 2>/dev/null || true
                 if ! grep -q 'XDG_RUNTIME_DIR' /etc/profile.d/termux_env.sh 2>/dev/null; then
                     echo 'export XDG_RUNTIME_DIR=/tmp/runtime-$USER' >> /etc/profile.d/termux_env.sh
                     echo 'mkdir -p $XDG_RUNTIME_DIR' >> /etc/profile.d/termux_env.sh
                     echo 'chmod 700 $XDG_RUNTIME_DIR' >> /etc/profile.d/termux_env.sh
                 fi
+
             "
         else
             log_info "Configuring environment for Freedreno..."
@@ -369,13 +370,6 @@ case "$driver_choice" in
         echo -e "${RED}Invalid choice. Exiting.${RESET}"
         exit 1
         ;;
-esac
-
-case "$driver_choice" in
-    1) echo "Turnip Vulkan / Zink OpenGL ES (Hardware)" > /tmp/gpu_driver_name.txt ;;
-    2) echo "Freedreno Native OpenGL (Hardware)" > /tmp/gpu_driver_name.txt ;;
-    3) echo "VirGL (Universal Software Fallback)" > /tmp/gpu_driver_name.txt ;;
-    4) echo "LLVMpipe (Pure CPU Software Rendering)" > /tmp/gpu_driver_name.txt ;;
 esac
 
 log_success "Graphics drivers successfully updated for $SELECTED_DISTRO!"
