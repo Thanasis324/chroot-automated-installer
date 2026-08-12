@@ -25,13 +25,12 @@ An automated, touch-optimized, and graphically appealing installation script for
 
 ### Installation Guide
 
-#### Step 1: Download the Latest Release
-Open Termux and download the latest version of the installer using `wget` and `unzip`:
+#### Step 1: Clone the Repository
+Open Termux and download the latest version of the installer using `git`:
 ```bash
-pkg install wget unzip curl -y
-wget $(curl -s https://api.github.com/repos/Thanasis324/chroot-automated-installer/releases/latest | grep zipball_url | cut -d '"' -f 4) -O chroot-installer.zip
-unzip chroot-installer.zip
-cd Thanasis324-chroot-automated-installer-*
+pkg install git -y
+git clone https://github.com/Thanasis324/chroot-automated-installer.git
+cd chroot-automated-installer
 ```
 
 
