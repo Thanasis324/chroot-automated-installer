@@ -69,7 +69,7 @@ Once installation finishes, start your system:
 
 ---
 
-## ⚙️ Post-Install Configuration (`configure.sh`)
+## 🛠️ Post-Install Configuration (`configure.sh`)
 
 If you ever need to change your settings, fix broken packages, update drivers, or safely remove the operating system, you can use the central configuration hub:
 
@@ -83,34 +83,22 @@ If you ever need to change your settings, fix broken packages, update drivers, o
 3. **Manage Passwordless Sudo**: Dynamically toggle whether your Linux user account requires a password to execute root-level commands.
 4. **Manage Storage / Uninstall**: A safe removal utility that lets you delete specific Linux distributions (Debian/Fedora/Arch) to free up space, or completely eradicate the installer and its dependencies from Termux.
 
-## 🛠️ Repository Architecture
 
-- **`setup.sh`**: The master installer. Features smart privilege-dropping to safely execute `apt`/`pkg` commands (fixing Termux Curl/SSL fresh-install bugs), then cleanly elevates to root.
-- **`start-chroot.sh`**: A master delegator that dynamically detects installed distributions via `chroot-distro list` and executes the corresponding OS launcher.
-- **`scripts/start_*.sh`**: Modular, distro-specific boot scripts that handle DBus isolation (`dbus-run-session`), XFCE4 configurations, and GPU environment variables natively.
-- **`scripts/gpu_detect.sh`**: Hardware identification module designed to read Android properties (`getprop`) and sysfs nodes to intelligently configure Adreno Turnip profiles.
-- **`uninstall.sh`**: Safely and cleanly uninstalls the distributions and removes configuration files without harming your base Termux.
-
----
 
 ## 🌟 Key Features
 
-1. **Native Chroot Performance**: Built exclusively around `chroot-distro` for true native hardware mounting, ensuring maximum performance compared to PRoot environments.
-2. **Native Bluetooth Gamepad Support**: Automatically maps Android's secure input groups (`aid_input`) into the chroot and runs a lightweight background `termux-udevd` daemon to bypass missing `udev` dependencies. 
-   - Xbox, PlayStation (DualShock/DualSense), Nintendo, 8BitDo, GameSir, and generic Bluetooth controllers work natively in Linux games without root hacks!
-   - Full support for **Rumble (Force-Feedback)** and LED controls via automated secure permission injections (`chmod 666`).
-   - Disables aggressive SDL HIDAPI polling so controllers flawlessly fall back to standard `evdev`.
-3. **Advanced Adreno GPU Stack**:
-   - Accurately detects and maps Qualcomm Adreno GPUs, supporting **6xx**, **7xx**, and the bleeding-edge **8xx Series** (e.g., Snapdragon 8 Elite, 8S Gen 4).
-   - Installs the complete official Khronos Vulkan pipeline (`vulkan-loader-generic`, `mesa-vulkan-icd-freedreno`, `mesa-zink`) to bypass generic software rendering.
-   - Provides a guaranteed **VirGL** fallback renderer for non-Adreno chipsets (Mali, PowerVR, Exynos Xclipse, Google Tensor).
-3. **Smart Privilege Dropping**: Setup script safely navigates Termux's root constraints by using `su -c` dropping mechanisms and raw `apt full-upgrade` commands to prevent `pkg` crashes on fresh installs.
-4. **Touch-Optimized XFCE4 Environment**:
-   - Pre-configures a sleek system-wide Dark Mode scenario (**Arc-Dark GTK theme** & **Papirus-Dark icons**).
-   - **Single-Click UI**: Desktop icons and Thunar File Manager are pre-configured to open with a single tap, drastically improving the touchscreen experience.
-   - **Shutdown OS**: Bypasses systemd constraints by injecting a custom "Shutdown OS" desktop shortcut that elegantly terminates the XFCE session and cleanly unmounts the chroot from Termux.
-   - Bundles the **Onboard Virtual Keyboard** pre-configured to autostart, dock cleanly, and dynamically appear for text input.
-5. **Secure DBus & Audio Isolation**: Uses `XDG_RUNTIME_DIR=/tmp/runtime-$USER` inside isolated DBus sessions to guarantee perfectly stable XFCE4 boots every time.
+1. **Near-Native Performance**: Built exclusively around `chroot`, allowing your Linux system to talk directly to your phone's hardware. This delivers massively better speed and gaming performance compared to standard `PRoot` methods!
+2. **Plug & Play Bluetooth Controllers**: Connect your favorite gamepad and it just works—complete with rumble (force-feedback) and LED support.
+   - Fully supports Xbox, PlayStation (DualShock/DualSense), Nintendo Switch, 8BitDo, GameSir, and generic Bluetooth controllers out of the box.
+3. **Hardware-Accelerated Graphics**:
+   - **Snapdragon / Adreno Users**: Automatically detects and unlocks your GPU's full potential using custom Vulkan and OpenGL drivers (Turnip/Zink). Even supports the newest Snapdragon 8 Gen 4 / 8 Elite!
+   - **Other Chips (Tensor, Exynos, Mali)**: Uses a reliable `VirGL` fallback so you still get a smooth, accelerated desktop experience.
+4. **Automated & Safe Setup**: The installer handles all the complicated permissions, audio routing, and root setups for you in the background without breaking your phone.
+5. **Touch-Optimized Desktop**:
+   - Gives you a beautiful, pre-configured Dark Mode desktop (XFCE4).
+   - **Single-Click UI**: Everything opens with a single tap, making it super easy to use on a touchscreen.
+   - **Virtual Keyboard**: Includes an on-screen keyboard that automatically docks and appears when you need to type.
+   - **Safe Shutdown**: Includes a convenient "Shutdown OS" button on the desktop to safely close everything down.
 
 ---
 
@@ -154,7 +142,7 @@ If you are a developer or a power user tasked with debugging or extending this e
 *   **[chroot-distro](https://github.com/sabamdarif/chroot-distro)**: This project is heavily reliant on the incredible work done by the `chroot-distro` project to provide native, high-performance containerization on Android.
 *   **[Termux](https://termux.dev/) & [Termux:X11](https://github.com/termux/termux-x11)**: For providing the core terminal environment and the robust X11 display server that makes the graphical interface possible.
 *   **[Mesa Project](https://www.mesa3d.org/)**: For the open-source Turnip (Vulkan) and Zink (OpenGL) drivers.
-*   **[lfdevs/mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)**: Huge thanks for providing pre-compiled, highly-optimized Mesa drivers specifically tailored for Android containers that bring true hardware acceleration to Adreno GPUs.
+*   **[lfdevs/mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)**: Huge thanks to these folks for providing pre-compiled, highly-optimized bleeding-edge Mesa drivers. They are the ones who allowed us to get the latest Mesa working seamlessly inside Debian, Fedora, and Arch Linux on Android!
 *   **[XFCE](https://xfce.org/)**: For the lightweight, fast, and touch-friendly desktop environment used in this setup.
 *   **[PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/)**: For enabling seamless audio streaming between the chroot and Android.
 *   **[VirGL](https://virgil3d.github.io/)**: For providing the fallback 3D acceleration for non-Adreno GPUs.
