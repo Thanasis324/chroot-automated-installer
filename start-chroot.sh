@@ -25,15 +25,15 @@ done
 if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
     echo -e "${YELLOW}Warning: Could not automatically detect installed distros.${RESET}"
     echo -e "${CYAN}${BOLD}Please select which environment to launch, or run the installer:${RESET}"
-    echo "  1. fedora"
-    echo "  2. debian"
+    echo "  1. debian"
+    echo "  2. fedora"
     echo "  3. archlinux"
     echo "  4. I haven't run setup.sh yet (Run installer now)"
     read -p "Select a number (1-4): " fallback_choice
     
     case "$fallback_choice" in
-        1) SELECTED_DISTRO="fedora" ;;
-        2) SELECTED_DISTRO="debian" ;;
+        1) SELECTED_DISTRO="debian" ;;
+        2) SELECTED_DISTRO="fedora" ;;
         3) SELECTED_DISTRO="archlinux" ;;
         4) 
             echo -e "${GREEN}Starting installer...${RESET}"

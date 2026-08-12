@@ -51,8 +51,8 @@ Run the setup script directly as your standard Termux user (**Do NOT run with su
 The script features an advanced setup UI that will guide you through:
 1. **Repository Mirror Selection**: Automatically launches `termux-change-repo` so you can select the fastest mirror for your region.
 2. **Linux Distribution Selection**: 
-   - **Fedora** *(Recommended - Easy to use, excellent driver support)*
-   - **Debian** *(Highly stable core)*
+   - **Debian** *(Recommended - Highly stable core, excellent support)*
+   - **Fedora** *(Alternative - Modern, cutting-edge software)*
    - **Archlinux** *(For advanced rolling-release users)*
 3. **Desired Username & Password**
 4. **GPU Architecture Fallback**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx/5xx** or **VirGL (Mali/PowerVR/Exynos/Tensor)**.

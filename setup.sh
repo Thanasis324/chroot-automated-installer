@@ -290,16 +290,16 @@ get_distro_selection() {
     print_divider
     print_centered "${WHITE}${BOLD}Please choose the Linux distribution to install:${RESET}"
     echo ""
-    print_centered "  ${CYAN}1) Fedora${RESET}    (Recommended - Easy to use, best driver support)  "
-    print_centered "  ${CYAN}2) Debian${RESET}    (Stable, but might require newer Mesa on Adreno)  "
+    print_centered "  ${CYAN}1) Debian${RESET}    (Recommended - Highly stable, excellent support)  "
+    print_centered "  ${CYAN}2) Fedora${RESET}    (Alternative - Modern, cutting-edge software)     "
     print_centered "  ${CYAN}3) Archlinux${RESET} (For advanced users)                              "
     print_divider
     echo ""
     while true; do
-        read -rp "$(echo -e "${YELLOW}Enter choice [1-3]: ${RESET}")" DISTRO_CHOICE
+        read -rp "$(echo -e "${YELLOW}Enter choice [1-3] (default: 1): ${RESET}")" DISTRO_CHOICE
         case "$DISTRO_CHOICE" in
-            1) SELECTED_DISTRO="fedora"; break ;;
-            2) SELECTED_DISTRO="debian"; break ;;
+            1|"") SELECTED_DISTRO="debian"; break ;;
+            2) SELECTED_DISTRO="fedora"; break ;;
             3) SELECTED_DISTRO="archlinux"; break ;;
             *) log_warn "Invalid choice. Please enter 1, 2, or 3." ;;
         esac
