@@ -254,8 +254,10 @@ case "$driver_choice" in
             else
                 LFDEVS_PATTERN="debian_trixie_arm64\.tar\.gz"
             fi
-            # Bypass strict API rate limits by scraping the HTML release page directly
-            DOWNLOAD_URL=$(curl -sL https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
+            # Bypass strict API rate limits by scraping the expanded_assets HTML fragment directly
+            LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
+            TAG=$(echo "$LATEST_URL" | awk -F "/" "{print \$NF}")
+            DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
             if [ -n "$DOWNLOAD_URL" ]; then
                 DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
             fi
