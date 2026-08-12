@@ -28,8 +28,10 @@ An automated, touch-optimized, and graphically appealing installation script for
 #### Step 1: Clone the Repository
 Open Termux and download the latest version of the installer using `git`:
 ```bash
-pkg install git -y
-git clone https://github.com/Thanasis324/chroot-automated-installer.git
+pkg install wget unzip -y
+wget https://github.com/Thanasis324/chroot-automated-installer/archive/refs/heads/main.zip -O installer.zip
+unzip installer.zip
+mv chroot-automated-installer-main chroot-automated-installer
 cd chroot-automated-installer
 ```
 
