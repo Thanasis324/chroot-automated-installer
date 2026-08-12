@@ -254,7 +254,11 @@ case "$driver_choice" in
             else
                 LFDEVS_PATTERN="debian_trixie_arm64\.tar\.gz"
             fi
-            DOWNLOAD_URL=$(curl -s https://api.github.com/repos/lfdevs/mesa-for-android-container/releases/latest | grep -o "\"browser_download_url\": \"[^\"]*\"" | cut -d"\"" -f4 | grep -iE "$LFDEVS_PATTERN" | head -n 1)
+            # Bypass strict API rate limits by scraping the HTML release page directly
+            DOWNLOAD_URL=$(curl -sL https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
+            if [ -n "$DOWNLOAD_URL" ]; then
+                DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
+            fi
             
             if [ -n "$DOWNLOAD_URL" ]; then
                 cd /tmp
@@ -375,4 +379,37 @@ esac
 log_success "Graphics drivers successfully updated for $SELECTED_DISTRO!"
 log_info "You may now run ./start-chroot.sh to enjoy your hardware-accelerated desktop."
 
-log_success "Graphics optimization complete! You can now start your desktop."
+log_success "Graphics optimization complete!"
+
+print_divider
+print_centered "${YELLOW}${BOLD}Verifying Hardware Acceleration...${RESET}"
+
+# Start a headless, invisible test display server
+export DISPLAY=:99
+if command -v termux-x11 &> /dev/null; then
+    termux-x11 :99 -ac >/dev/null 2>&1 &
+    TERMUX_X11_PID=$!
+    sleep 2
+fi
+
+# Run glxinfo inside the container to test OpenGL/Vulkan acceleration
+$DISTRO_CMD login $SELECTED_DISTRO --user root --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix -- bash -c "
+    if command -v glxinfo >/dev/null 2>&1; then
+        export DISPLAY=:99
+        if glxinfo -B 2>/dev/null | grep -q 'Accelerated: yes'; then
+            DRIVER=\$(glxinfo -B 2>/dev/null | grep 'OpenGL renderer string' | cut -d ':' -f 2 | sed 's/^[[:space:]]*//')
+            echo -e \"\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware acceleration VERIFIED! Active Driver: \033[38;5;51m\$DRIVER\033[0m\n\"
+        else
+            echo -e \"\n\033[31m[ERROR] OpenGL failed to accelerate. Your device may require different settings or VirGL.\033[0m\n\"
+            glxinfo -B 2>/dev/null | grep 'OpenGL renderer string' || true
+        fi
+    else
+        echo -e \"\n\033[38;5;226m[WARNING] glxinfo not installed. Skipping automatic verification.\033[0m\n\"
+    fi
+"
+
+# Shut down the test display server
+if [ -n "$TERMUX_X11_PID" ]; then
+    kill $TERMUX_X11_PID 2>/dev/null || true
+    pkill -f 'termux-x11 :99' 2>/dev/null || true
+fi
