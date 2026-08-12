@@ -16,6 +16,11 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$SCRIPT_DIR/scripts"
+export SETUP_MODE="true"
+echo 'SETUP_MODE="true"' > "$SCRIPT_DIR/scripts/global_settings.sh"
+
 # --- Color Definitions ---
 BOLD="\033[1m"
 RESET="\033[0m"
@@ -64,7 +69,30 @@ log_error() {
 log_section() {
     echo ""
     echo -e "${PURPLE}${BOLD}>>> $1 <<<${RESET}"
-    echo "--------------------------------------------------------------------------------"
+    local term_width=$(tput cols 2>/dev/null || echo 80)
+    local divider=$(printf "%${term_width}s" | tr ' ' '-')
+    echo -e "${divider}"
+}
+
+# --- Helper functions for UI ---
+print_centered() {
+    local text="$1"
+    local term_width=$(tput cols 2>/dev/null || echo 80)
+    local clean_text=$(echo -e "$text" | sed -E 's/\x1B\[[0-9;]*[a-zA-Z]//g')
+    local text_length=${#clean_text}
+    if [ "$text_length" -ge "$term_width" ]; then
+        echo -e "$text"
+    else
+        local padding=$(( (term_width - text_length) / 2 ))
+        printf "%${padding}s" ""
+        echo -e "$text"
+    fi
+}
+
+print_divider() {
+    local term_width=$(tput cols 2>/dev/null || echo 80)
+    local divider=$(printf "%${term_width}s" | tr ' ' '=')
+    echo -e "${YELLOW}${BOLD}${divider}${RESET}"
 }
 
 # --- Step 1: Pre-Install Dependencies & Verify Internet Connection ---
@@ -143,15 +171,19 @@ install_all_dependencies() {
     )
 
     FAILED_PACKAGES=()
-    for dep in "${DEPS[@]}"; do
-        log_info "Installing Termux package: $dep"
-        if ! run_pkg "pkg install -y \"$dep\""; then
-            log_warn "Package '$dep' installation failed. Attempting retry..."
+    log_info "Bulk installing Termux packages to save time..."
+    if ! run_pkg "pkg install -y ${DEPS[*]}"; then
+        log_warn "Bulk installation failed. Falling back to sequential installation..."
+        for dep in "${DEPS[@]}"; do
+            log_info "Installing Termux package: $dep"
             if ! run_pkg "pkg install -y \"$dep\""; then
-                FAILED_PACKAGES+=("$dep")
+                log_warn "Package '$dep' installation failed. Attempting retry..."
+                if ! run_pkg "pkg install -y \"$dep\""; then
+                    FAILED_PACKAGES+=("$dep")
+                fi
             fi
-        fi
-    done
+        done
+    fi
 
     if [ ${#FAILED_PACKAGES[@]} -gt 0 ]; then
         log_warn "Some packages could not be installed directly: ${FAILED_PACKAGES[*]}"
@@ -254,10 +286,14 @@ get_distro_selection() {
         echo -e "${YELLOW}Previous selection detected: ${CYAN}${PREV_DISTRO^^}${RESET}"
     fi
 
-    echo -e "${WHITE}Please choose the Linux distribution to install:${RESET}"
-    echo -e "  ${CYAN}1) Fedora${RESET} (Recommended - Easy to use, best driver support)"
-    echo -e "  ${CYAN}2) Debian${RESET} (Stable, but might not work on Adreno 8xx without newer Mesa)"
-    echo -e "  ${CYAN}3) Archlinux${RESET} (For advanced users)"
+    echo ""
+    print_divider
+    print_centered "${WHITE}${BOLD}Please choose the Linux distribution to install:${RESET}"
+    echo ""
+    print_centered "  ${CYAN}1) Fedora${RESET}    (Recommended - Easy to use, best driver support)  "
+    print_centered "  ${CYAN}2) Debian${RESET}    (Stable, but might require newer Mesa on Adreno)  "
+    print_centered "  ${CYAN}3) Archlinux${RESET} (For advanced users)                              "
+    print_divider
     echo ""
     while true; do
         read -rp "$(echo -e "${YELLOW}Enter choice [1-3]: ${RESET}")" DISTRO_CHOICE
@@ -306,6 +342,15 @@ get_user_credentials() {
         fi
     done
 
+    while true; do
+        read -rp "$(echo -e "${CYAN}Enable passwordless sudo? [y/N]: ${RESET}")" SUDO_PROMPT
+        case "${SUDO_PROMPT,,}" in
+            y|yes) SUDO_CHOICE="yes"; break ;;
+            n|no|"") SUDO_CHOICE="no"; break ;;
+            *) log_warn "Invalid choice. Enter y or n." ;;
+        esac
+    done
+
     # Save created username to configuration file for launcher scripts
     echo "$USERNAME" > "$HOME/.${SELECTED_DISTRO}_user" 2>/dev/null || true
     echo "$USERNAME" > "/data/data/com.termux/files/home/.${SELECTED_DISTRO}_user" 2>/dev/null || true
@@ -322,26 +367,26 @@ get_user_credentials() {
 install_chroot_distro() {
     log_section "Step 4: Installing ${SELECTED_DISTRO^^} Environment via $DISTRO_CMD"
     
-    if $DISTRO_CMD list 2>/dev/null | grep -q "${SELECTED_DISTRO}.*installed"; then
-        log_warn "${SELECTED_DISTRO^^} is already installed in $DISTRO_CMD."
-        read -rp "$(echo -e "${YELLOW}Do you want to reinstall ${SELECTED_DISTRO^^}? (y/N): ${RESET}")" REINSTALL
-        if [[ "$REINSTALL" =~ ^[Yy]$ ]]; then
-            log_info "Removing existing ${SELECTED_DISTRO^^} installation..."
-            $DISTRO_CMD remove $SELECTED_DISTRO || true
-            log_info "Installing fresh ${SELECTED_DISTRO^^} environment using '$DISTRO_CMD install $SELECTED_DISTRO'..."
-            if ! $DISTRO_CMD install $SELECTED_DISTRO; then
-                log_error "Failed to download/install ${SELECTED_DISTRO^^} environment!"
-                log_error "Please check your internet connection and try again."
-                exit 1
-            fi
-        else
-            log_info "Using existing ${SELECTED_DISTRO^^} installation."
+    if [ "$SELECTED_DISTRO" = "archlinux" ]; then
+        log_info "Downloading Arch Linux ARM (aarch64) rootfs..."
+        ARCH_TAR="/data/local/tmp/ArchLinuxARM-aarch64-latest.tar.gz"
+        mkdir -p /data/local/tmp
+        
+        # Always remove existing file to get latest and avoid corrupted downloads
+        rm -f "$ARCH_TAR"
+        wget -q --show-progress -O "$ARCH_TAR" "http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz" || curl -L "http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz" -o "$ARCH_TAR"
+        
+        log_info "Launching '$DISTRO_CMD install $ARCH_TAR -n archlinux'..."
+        if ! $DISTRO_CMD install "$ARCH_TAR" -n archlinux; then
+            log_error "Installation stopped or failed for Arch Linux!"
+            exit 1
         fi
+        # We can safely delete the tarball after successful installation to save space
+        rm -f "$ARCH_TAR"
     else
-        log_info "Installing ${SELECTED_DISTRO^^} environment using '$DISTRO_CMD install $SELECTED_DISTRO'..."
+        log_info "Launching '$DISTRO_CMD install $SELECTED_DISTRO'..."
         if ! $DISTRO_CMD install $SELECTED_DISTRO; then
-            log_error "Failed to download/install ${SELECTED_DISTRO^^} environment!"
-            log_error "Please check your internet connection and try again."
+            log_error "Installation stopped or failed for ${SELECTED_DISTRO^^}!"
             exit 1
         fi
     fi
@@ -377,23 +422,27 @@ detect_gpu_architecture() {
         if [ "$gpu_choice" == "1" ]; then
             IS_ADRENO=true
             GPU_VENDOR="Qualcomm Adreno"
-            echo -e "${CYAN}Which Adreno series do you have?${RESET}"
-            echo "  1. 8xx Series (e.g., Snapdragon 8 Elite, 8S Gen 4, 8 Elite Gen 5)"
-            echo "  2. 7xx Series (e.g., Snapdragon 8 Gen 1, 8 Gen 2, 8 Gen 3, 7+ Gen 2)"
-            echo "  3. 6xx Series (e.g., Snapdragon 845, 865, 870, 888)"
-            echo "  4. 5xx Series or older (Native Freedreno OpenGL)"
-            echo "  5. Other / Unsure (Defaults to stable 6xx configs)"
-            read -p "Select Adreno Series (1-5): " adreno_choice
-            
-            if [ "$adreno_choice" == "1" ]; then
-                ADRENO_SERIES="A8XX"
-            elif [ "$adreno_choice" == "2" ]; then
-                ADRENO_SERIES="A7XX"
-            elif [ "$adreno_choice" == "4" ]; then
-                ADRENO_SERIES="A5XX"
-            else
-                ADRENO_SERIES="A6XX"
-            fi
+            echo ""
+            print_divider
+            print_centered "${CYAN}${BOLD}Adreno GPU Version Selection:${RESET}"
+            echo ""
+            print_centered "  ${WHITE}1)${RESET} 8xx Series (e.g., Snap. 8 Elite, 8S Gen 4)            "
+            print_centered "  ${WHITE}2)${RESET} 7xx Series (e.g., Snap. 8 Gen 1-3, 7+ Gen 2)          "
+            print_centered "  ${WHITE}3)${RESET} 6xx Series (e.g., Snap. 888, 870, 865, 855)           "
+            print_centered "  ${WHITE}4)${RESET} Older / Other (Fallback to generic Turnip)              "
+            print_divider
+            echo ""
+            while true; do
+                read -p "Select your Adreno series (1-4): " adreno_choice
+                case "$adreno_choice" in
+                    1) ADRENO_SERIES="8xx"; break ;;
+                    2) ADRENO_SERIES="7xx"; break ;;
+                    3) ADRENO_SERIES="6xx"; break ;;
+                    4) ADRENO_SERIES="Generic"; break ;;
+                    *) log_warn "Invalid choice. Please select 1-4." ;;
+                esac
+            done
+            log_info "Selected Adreno Series: $ADRENO_SERIES"
         else
             IS_ADRENO=false
             GPU_VENDOR="Other"
@@ -441,9 +490,10 @@ configure_chroot_system() {
     SETUP_B64=$(base64 -w0 "$DISTRO_SETUP_SCRIPT" 2>/dev/null || base64 "$DISTRO_SETUP_SCRIPT" | tr -d '\r\n')
 
     $DISTRO_CMD login $SELECTED_DISTRO -- bash -c "
+        export SETUP_MODE='$SETUP_MODE'
         echo '$SETUP_B64' | base64 -d > /tmp/distro_setup.sh
         chmod +x /tmp/distro_setup.sh
-        bash /tmp/distro_setup.sh '$USERNAME' '$PASSWORD' '$IS_ADRENO' '$ADRENO_SERIES' '$SELECTED_DISTRO'
+        bash /tmp/distro_setup.sh '$USERNAME' '$PASSWORD' '$IS_ADRENO' '$ADRENO_SERIES' '$SELECTED_DISTRO' '$SUDO_CHOICE'
     "
 
     log_success "${SELECTED_DISTRO^^} internal configuration complete."
@@ -478,7 +528,7 @@ setup_launchers() {
         cp "$START_SCRIPT" "$PREFIX_BIN/start-chroot" 2>/dev/null || true
         chmod 777 "$PREFIX_BIN/startchroot" "$PREFIX_BIN/start-chroot" 2>/dev/null || chmod +x "$PREFIX_BIN/startchroot" "$PREFIX_BIN/start-chroot" 2>/dev/null || true
     fi
-
+    
     log_success "Launcher script created: './start-chroot.sh' and command 'startchroot'."
 }
 

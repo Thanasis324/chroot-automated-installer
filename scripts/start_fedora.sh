@@ -114,6 +114,15 @@ $CMD_PREFIX "
     mkdir -p \$XDG_RUNTIME_DIR
     chmod 700 \$XDG_RUNTIME_DIR
     
+    # Apply touch-friendly onboard keyboard settings on launch
+    if command -v gsettings >/dev/null 2>&1; then
+        dbus-launch gsettings set org.onboard.icon-palette in-use true 2>/dev/null || true
+        dbus-launch gsettings set org.onboard.window docking-enabled true 2>/dev/null || true
+        dbus-launch gsettings set org.onboard.window docking-edge 'bottom' 2>/dev/null || true
+        dbus-launch gsettings set org.onboard.window.landscape dock-expand true 2>/dev/null || true
+        dbus-launch gsettings set org.onboard.window.portrait dock-expand true 2>/dev/null || true
+    fi
+    
     if command -v dbus-run-session >/dev/null 2>&1; then
         dbus-run-session -- xfce4-session || dbus-run-session -- startxfce4
     elif command -v dbus-launch >/dev/null 2>&1; then

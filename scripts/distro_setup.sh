@@ -13,6 +13,12 @@ PASSWORD="${2:-password}"
 IS_ADRENO="${3:-false}"
 ADRENO_SERIES="${4:-A8XX}"
 DISTRO_NAME="${5:-debian}"
+SUDO_CHOICE="${6:-yes}"
+
+SETUP_MODE="${SETUP_MODE:-true}"
+RUN_PKGS="yes"
+RUN_ENV="yes"
+RUN_USER="yes"
 
 BOLD="\033[1m"
 GREEN="\033[38;5;46m"
@@ -20,6 +26,38 @@ CYAN="\033[38;5;51m"
 YELLOW="\033[38;5;226m"
 WHITE="\033[38;5;231m"
 RESET="\033[0m"
+
+if [ "$SETUP_MODE" == "false" ]; then
+    echo -e "\n${YELLOW}${BOLD}=== Interactive Repair Mode ===${RESET}"
+    
+    read -rp "$(echo -e "${CYAN}1. Reinstall and update all core packages? [Y/n]: ${RESET}")" PKG_PROMPT
+    [[ "${PKG_PROMPT,,}" == "n"* ]] && RUN_PKGS="no"
+    
+    read -rp "$(echo -e "${CYAN}2. Rebuild X11 and Audio environment configs? [Y/n]: ${RESET}")" ENV_PROMPT
+    [[ "${ENV_PROMPT,,}" == "n"* ]] && RUN_ENV="no"
+    
+    read -rp "$(echo -e "${CYAN}3. Reset user passwords and permissions? [Y/n]: ${RESET}")" USER_PROMPT
+    [[ "${USER_PROMPT,,}" == "n"* ]] && RUN_USER="no"
+    
+    if [ "$RUN_USER" == "yes" ]; then
+        echo ""
+        read -rp "$(echo -e "${CYAN}Please enter the username to configure (default: ${USERNAME}): ${RESET}")" PROMPT_USER
+        USERNAME="${PROMPT_USER:-$USERNAME}"
+        
+        read -rsp "$(echo -e "${CYAN}Enter new password for $USERNAME: ${RESET}")" PASSWORD
+        echo ""
+        read -rp "$(echo -e "${CYAN}Enable passwordless sudo? [y/N]: ${RESET}")" SUDO_PROMPT
+        case "${SUDO_PROMPT,,}" in
+            y|yes) SUDO_CHOICE="yes" ;;
+            *) SUDO_CHOICE="no" ;;
+        esac
+    else
+        # If user setup is skipped, set default fallbacks so the variables exist
+        PASSWORD="password"
+        SUDO_CHOICE="no"
+    fi
+    echo -e "${YELLOW}===============================${RESET}\n"
+fi
 
 echo -e "${CYAN}${BOLD}[${DISTRO_NAME^^} SETUP] Initializing environment configuration...${RESET}"
 
@@ -32,20 +70,49 @@ chmod 666 /dev/ion 2>/dev/null || true
 chmod 666 /dev/dma_heap/* 2>/dev/null || true
 
 # --- 2. Package Installation ---
+if [ "${RUN_PKGS:-yes}" = "yes" ]; then
 echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Updating package repositories and installing dependencies...${RESET}"
 
 if [ "$DISTRO_NAME" = "fedora" ]; then
     dnf update -y
     dnf install -y @xfce-desktop-environment || true
-    dnf install -y sudo dbus dbus-x11 dconf pulseaudio-utils alsa-utils curl wget git figlet pciutils lshw florence arc-theme papirus-icon-theme google-noto-sans-fonts vulkan-loader mesa-vulkan-drivers mesa-dri-drivers mesa-libGL glx-utils vulkan-tools libdisplay-info || true
+    dnf install -y sudo dbus dbus-x11 dconf pulseaudio-utils alsa-utils curl wget git figlet pciutils lshw florence arc-theme papirus-icon-theme google-noto-sans-fonts vulkan-loader mesa-vulkan-drivers mesa-dri-drivers mesa-libGL glx-utils vulkan-tools libdisplay-info polkit-gnome || true
 elif [ "$DISTRO_NAME" = "archlinux" ]; then
+    # Disable pacman sandbox which crashes in Android chroots (Landlock/ALPM user errors)
+    if grep -q "^#DisableSandbox" /etc/pacman.conf; then
+        sed -i 's/^#DisableSandbox/DisableSandbox/g' /etc/pacman.conf
+    elif ! grep -q "^DisableSandbox" /etc/pacman.conf; then
+        sed -i '/^\[options\]/a DisableSandbox' /etc/pacman.conf
+    fi
+    
+    # Disable CheckSpace as it fails to determine mount points inside chroot
+    sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf
+
+    # Initialize pacman keyring for Arch Linux ARM
+    pacman-key --init
+    pacman-key --populate archlinuxarm || pacman-key --populate archlinux
     pacman -Syu --noconfirm
-    pacman -S --noconfirm sudo dbus dbus-glib pulseaudio alsa-utils curl wget git figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-gtk-theme papirus-icon-theme noto-fonts vulkan-freedreno vulkan-swrast vulkan-mesa-layers mesa-utils vulkan-tools libdisplay-info || true
+
+    ARCH_DEPS=(sudo dbus dbus-glib pulseaudio alsa-utils curl wget git figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-gtk-theme papirus-icon-theme noto-fonts mesa vulkan-icd-loader vulkan-freedreno vulkan-swrast vulkan-mesa-layers mesa-utils vulkan-tools libdisplay-info chromium polkit-gnome)
+    
+    # Bulk install first for speed, fallback to sequential if a package is invalid
+    if ! pacman -S --noconfirm "${ARCH_DEPS[@]}"; then
+        echo -e "${YELLOW}Bulk installation failed. Retrying packages sequentially...${RESET}"
+        for dep in "${ARCH_DEPS[@]}"; do
+            pacman -S --noconfirm "$dep" || echo -e "${RED}Skipped missing package: $dep${RESET}"
+        done
+    fi
 else
     export DEBIAN_FRONTEND=noninteractive
+    
+    # Add Freedesktop.org CI Mesa Nightly Repo for absolute latest Mesa drivers (Trixie)
+    echo "deb [trusted=yes] https://gitlab.freedesktop.org/gfx-ci/ci-deb-repo/-/raw/trixie trixie main" > /etc/apt/sources.list.d/gfx-ci.list
+    
     apt-get update -y && apt-get upgrade -y
+
     apt-get install -y --no-install-recommends \
-        sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-theme papirus-icon-theme fonts-noto fonts-dejavu libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgl1 mesa-utils vulkan-tools virglrenderer libvirglrenderer1 libdisplay-info1 || apt-get install -y sudo dbus dbus-x11 dconf-cli pulseaudio-utils xfce4 xfce4-goodies onboard mesa-utils mesa-vulkan-drivers libgl1-mesa-dri libdisplay-info1
+        sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-theme papirus-icon-theme fonts-noto fonts-dejavu libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgl1 mesa-utils vulkan-tools virgl-server libvirglrenderer1 libdisplay-info-dev chromium policykit-1-gnome || apt-get install -y sudo dbus dbus-x11 dconf-cli pulseaudio-utils xfce4 xfce4-goodies onboard mesa-utils mesa-vulkan-drivers libgl1-mesa-dri libdisplay-info-dev chromium policykit-1-gnome
+fi
 fi
 
 # --- 2.5. Initialize D-Bus Machine ID ---
@@ -54,6 +121,7 @@ mkdir -p /run/dbus /var/run/dbus
 dbus-uuidgen --ensure 2>/dev/null || true
 
 # --- 3. Group Creation, User Setup & Android Hardware GID Mapping ---
+if [ "${RUN_USER:-yes}" = "yes" ]; then
 echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Setting up user '$USERNAME' with passwordless sudo & graphics permissions...${RESET}"
 
 # Ensure essential groups exist, including Android AID_GRAPHICS (GID 1003)
@@ -77,12 +145,16 @@ echo "root:$PASSWORD" | chpasswd
 # Add user to hardware and permission groups
 usermod -aG sudo,video,audio,render,input,aid_graphics,graphics,aid_input,aid_bluetooth "$USERNAME" 2>/dev/null || true
 
-# Grant Sudo privileges without password prompt for touch convenience
-mkdir -p /etc/sudoers.d
-echo "$USERNAME ALL=(ALL:ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$USERNAME"
-chmod 0440 "/etc/sudoers.d/$USERNAME"
+# Grant Sudo privileges without password prompt for touch convenience (if selected)
+if [ "$SUDO_CHOICE" == "yes" ]; then
+    mkdir -p /etc/sudoers.d
+    echo "$USERNAME ALL=(ALL:ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$USERNAME"
+    chmod 0440 "/etc/sudoers.d/$USERNAME"
+fi
+fi
 
 # --- 4. Audio & X11 Environment Configuration ---
+if [ "${RUN_ENV:-yes}" = "yes" ]; then
 echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Configuring Audio (PulseAudio TCP) & X11 Display...${RESET}"
 
 cat << 'EOF' > /etc/profile.d/termux_env.sh
@@ -404,5 +476,6 @@ if [ -f /usr/share/vulkan/icd.d/freedreno_icd.aarch64.json ] || [ -f /etc/vulkan
 else
     echo -e "${YELLOW}[${DISTRO_NAME^^} SETUP] Base driver suite ready.${RESET}"
 fi
+fi
 
-echo -e "${GREEN}${BOLD}[${DISTRO_NAME^^} SETUP] Internal setup complete!${RESET}"
+echo -e "${GREEN}${BOLD}[${DISTRO_NAME^^} SETUP] Chroot environment configuration completed successfully!${RESET}"

@@ -10,30 +10,16 @@ YELLOW="\033[38;5;226m"
 RESET="\033[0m"
 
 PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
+export PATH="$PATH:$HOME/.local/bin:/data/data/com.termux/files/usr/bin"
+DISTRO_CMD="chroot-distro"
 INSTALLED_DISTROS=()
 
-# First attempt: parse the 'list' command output directly
-if command -v $DISTRO_CMD &>/dev/null; then
-    while read -r line; do
-        if echo "$line" | grep -qi "installed"; then
-            name=$(echo "$line" | sed -E 's/^[^a-zA-Z0-9]*([a-zA-Z0-9_-]+).*/\1/')
-            # Ensure we only pick up supported ones
-            if [[ "$name" == "debian" || "$name" == "fedora" || "$name" == "archlinux" ]]; then
-                INSTALLED_DISTROS+=("$name")
-            fi
-        fi
-    done < <($DISTRO_CMD list 2>/dev/null)
-fi
-
-# Fallback: Check known paths if list command parsing fails
-if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
-    for d in debian fedora archlinux; do
-        if [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ] || \
-           [ -d "/data/local/chroot-distro/$d" ]; then
-            INSTALLED_DISTROS+=("$d")
-        fi
-    done
-fi
+# Fast directory check instead of calling slow 'chroot-distro list'
+for d in debian fedora archlinux; do
+    if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ]; then
+        INSTALLED_DISTROS+=("$d")
+    fi
+done
 
 
 if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then

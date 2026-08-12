@@ -16,6 +16,27 @@ log_info() { echo -e "${CYAN}${BOLD}[INFO]${RESET} ${WHITE}$1${RESET}"; }
 log_success() { echo -e "${GREEN}${BOLD}[SUCCESS]${RESET} ${WHITE}$1${RESET}"; }
 log_warn() { echo -e "${YELLOW}${BOLD}[WARNING]${RESET} ${WHITE}$1${RESET}"; }
 
+# --- Helper functions for UI ---
+print_centered() {
+    local text="$1"
+    local term_width=$(tput cols 2>/dev/null || echo 80)
+    local clean_text=$(echo -e "$text" | sed -E 's/\x1B\[[0-9;]*[a-zA-Z]//g')
+    local text_length=${#clean_text}
+    if [ "$text_length" -ge "$term_width" ]; then
+        echo -e "$text"
+    else
+        local padding=$(( (term_width - text_length) / 2 ))
+        printf "%${padding}s" ""
+        echo -e "$text"
+    fi
+}
+
+print_divider() {
+    local term_width=$(tput cols 2>/dev/null || echo 80)
+    local divider=$(printf "%${term_width}s" | tr ' ' '=')
+    echo -e "${YELLOW}${BOLD}${divider}${RESET}"
+}
+
 if command -v chroot-distro &> /dev/null; then
     DISTRO_CMD="chroot-distro"
 else
@@ -23,33 +44,28 @@ else
     exit 1
 fi
 
-if [ -z "$SELECTED_DISTRO" ]; then
-    if [ -f "$HOME/.chroot_distro" ]; then
-        SELECTED_DISTRO=$(cat "$HOME/.chroot_distro" | tr -d '\r\n')
-    elif [ -f "/data/data/com.termux/files/home/.chroot_distro" ]; then
-        SELECTED_DISTRO=$(cat "/data/data/com.termux/files/home/.chroot_distro" | tr -d '\r\n')
-    fi
-fi
+SELECTED_DISTRO="$1"
 
-# Validate or auto-detect if the saved distro doesn't exist
+# If no distro was passed as an argument, auto-detect installed distros
 if [ -z "$SELECTED_DISTRO" ]; then
+    PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
     INSTALLED_DISTROS=()
-    while read -r line; do
-        if echo "$line" | grep -qi "installed"; then
-            name=$(echo "$line" | sed -E 's/^[^a-zA-Z0-9]*([a-zA-Z0-9_-]+).*/\1/')
-            if [[ "$name" == "debian" || "$name" == "fedora" || "$name" == "archlinux" ]]; then
-                INSTALLED_DISTROS+=("$name")
-            fi
+    for d in debian fedora archlinux; do
+        if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ] || [ -d "/data/local/chroot-distro/$d" ]; then
+            INSTALLED_DISTROS+=("$d")
         fi
-    done < <($DISTRO_CMD list 2>/dev/null)
+    done
     
     if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
         echo -e "${YELLOW}Warning: Could not automatically detect installed distros.${RESET}"
-        echo -e "${CYAN}${BOLD}Please select which environment to fix, or run the installer:${RESET}"
-        echo "  1. fedora"
-        echo "  2. debian"
-        echo "  3. archlinux"
-        echo "  4. I haven't run setup.sh yet (Run installer now)"
+        echo ""
+        print_divider
+        print_centered "${CYAN}${BOLD}Please select which environment to fix, or run the installer:${RESET}"
+        print_centered "  ${WHITE}1)${RESET} fedora                                       "
+        print_centered "  ${WHITE}2)${RESET} debian                                       "
+        print_centered "  ${WHITE}3)${RESET} archlinux                                    "
+        print_centered "  ${WHITE}4)${RESET} I haven't run setup.sh yet (Run installer) "
+        print_divider
         read -p "Select a number (1-4): " fallback_choice
         
         case "$fallback_choice" in
@@ -105,24 +121,27 @@ case "$driver_choice" in
             # Clean up and ensure core dependencies exist (Heal broken GUI from previous removals)
             if command -v dnf >/dev/null 2>&1; then
                 echo "Running dnf install..."
-                dnf install -y mesa-libGL mesa-dri-drivers mesa-vulkan-drivers vulkan-loader @xfce-desktop-environment libdisplay-info git cmake gcc gcc-c++ make libX11-devel libXext-devel mesa-libEGL-devel
-                if [ ! -f /usr/local/lib/libGL.so.1 ]; then
-                    echo "Compiling gl4es for native OpenGL wrapper support..."
-                    cd /tmp
-                    rm -rf gl4es
-                    git clone https://github.com/ptitSeb/gl4es.git >/dev/null 2>&1
-                    cd gl4es
-                    mkdir -p build && cd build
-                    cmake .. -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1
-                    make -j$(nproc) >/dev/null 2>&1
-                    mkdir -p /usr/local/lib
-                    cp lib/libGL.so.1 /usr/local/lib/
-                    ln -sf /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so
-                fi
+                dnf install -y mesa-libGL mesa-dri-drivers mesa-vulkan-drivers vulkan-loader @xfce-desktop-environment libdisplay-info git cmake gcc gcc-c++ make libX11-devel libXext-devel mesa-libEGL-devel >/dev/null 2>&1
             elif command -v apt-get >/dev/null 2>&1; then
-                apt-get install -y libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 xfce4 xfwm4 libdisplay-info1 >/dev/null 2>&1 || true
+                echo "Running apt-get install..."
+                apt-get install -y libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 xfce4 xfwm4 git cmake gcc g++ make libx11-dev libxext-dev libegl1-mesa-dev libdisplay-info-dev >/dev/null 2>&1 || true
             elif command -v pacman >/dev/null 2>&1; then
-                pacman -Sy --noconfirm vulkan-freedreno vulkan-swrast vulkan-mesa-layers vulkan-icd-loader xfce4 xfwm4 libdisplay-info >/dev/null 2>&1 || true
+                echo "Running pacman install..."
+                pacman -Sy --noconfirm vulkan-freedreno vulkan-swrast vulkan-mesa-layers vulkan-icd-loader xfce4 xfwm4 libdisplay-info git cmake gcc make libx11 libxext mesa >/dev/null 2>&1 || true
+            fi
+            
+            if [ ! -f /usr/local/lib/libGL.so.1 ]; then
+                echo "Compiling gl4es for native OpenGL wrapper support..."
+                cd /tmp
+                rm -rf gl4es
+                git clone https://github.com/ptitSeb/gl4es.git >/dev/null 2>&1
+                cd gl4es
+                mkdir -p build && cd build
+                cmake .. -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1
+                make -j$(nproc) >/dev/null 2>&1
+                mkdir -p /usr/local/lib
+                cp lib/libGL.so.1 /usr/local/lib/
+                ln -sf /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so
             fi
             
             # Failsafe: Symlink libdisplay-info if the host provides a different ABI version than lfdevs expects

@@ -86,6 +86,7 @@ echo -e "${CYAN}${BOLD}Ensuring System D-Bus daemon is active...${RESET}"
 $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
     mkdir -p /run/dbus /var/run/dbus
     rm -f /run/dbus/pid /var/run/dbus/pid /run/dbus/system_bus_socket /var/run/dbus/system_bus_socket 2>/dev/null
+    chmod 1777 /dev/shm 2>/dev/null || true
     dbus-uuidgen --ensure 2>/dev/null || true
     if ! pgrep -f 'dbus-daemon.*system' >/dev/null 2>&1 || [ ! -S /run/dbus/system_bus_socket ]; then
         dbus-daemon --system --fork 2>/dev/null || service dbus start 2>/dev/null || true
@@ -113,6 +114,15 @@ $CMD_PREFIX "
     export XDG_RUNTIME_DIR=/tmp/runtime-\$USER
     mkdir -p \$XDG_RUNTIME_DIR
     chmod 700 \$XDG_RUNTIME_DIR
+    
+    # Apply touch-friendly onboard keyboard settings on launch
+    if command -v gsettings >/dev/null 2>&1; then
+        dbus-launch gsettings set org.onboard.icon-palette in-use true 2>/dev/null || true
+        dbus-launch gsettings set org.onboard.window docking-enabled true 2>/dev/null || true
+        dbus-launch gsettings set org.onboard.window docking-edge 'bottom' 2>/dev/null || true
+        dbus-launch gsettings set org.onboard.window.landscape dock-expand true 2>/dev/null || true
+        dbus-launch gsettings set org.onboard.window.portrait dock-expand true 2>/dev/null || true
+    fi
     
     if command -v dbus-run-session >/dev/null 2>&1; then
         dbus-run-session -- xfce4-session || dbus-run-session -- startxfce4

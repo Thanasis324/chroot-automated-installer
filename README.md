@@ -1,5 +1,6 @@
 # Termux Automated Linux Chroot Setup Script
 
+**Status:** Debian & Fedora work with all GPUs. Arch Linux (planned).
 An automated, touch-optimized, and graphically appealing installation script for running **Fedora**, **Debian**, or **Arch Linux** inside **Termux** natively using **`chroot-distro`**. This script integrates **Termux:X11** display output, **PulseAudio** sound, and flawless hardware-accelerated **Qualcomm Adreno Turnip/Zink (A6XX / A7XX / A8XX) GPU Drivers** (alongside VirGL fallbacks).
 
 ---
@@ -7,9 +8,9 @@ An automated, touch-optimized, and graphically appealing installation script for
 ## 🚀 How to Run in Termux
 
 ### Prerequisites
-- **Termux** app installed.
-- **Termux:X11** app installed.
-- **Rooted Device** (Required for `chroot-distro`).
+- **Termux** app installed. (Download the latest release from [F-Droid](https://f-droid.org/packages/com.termux/) or [GitHub](https://github.com/termux/termux-app/releases))
+- **Termux:X11** app installed. (Download the latest nightly release from [GitHub](https://github.com/termux/termux-x11/releases/tag/nightly))
+- **Rooted Device** (Required for `chroot-distro`). *Not sure what Android rooting is? Read this [ad-free, FOSS guide on Rooting with Magisk](https://topjohnwu.github.io/Magisk/).*
 - **Recommended Termux:X11 Settings : **
 1)output -> Fullscreen : on
 2)pointer -> touchscreen input mode: Direct touch
