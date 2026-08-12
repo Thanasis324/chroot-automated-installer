@@ -5,11 +5,14 @@
 # the optimal graphics driver for your device.
 # ==============================================================================
 
+set -e
+
 BOLD="\033[1m"
 GREEN="\033[38;5;46m"
 YELLOW="\033[38;5;226m"
 CYAN="\033[38;5;51m"
 WHITE="\033[38;5;231m"
+RED="\033[31m"
 RESET="\033[0m"
 
 log_info() { echo -e "${CYAN}${BOLD}[INFO]${RESET} ${WHITE}$1${RESET}"; }
@@ -51,7 +54,7 @@ if [ -z "$SELECTED_DISTRO" ]; then
     PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
     INSTALLED_DISTROS=()
     for d in debian fedora archlinux; do
-        if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ] || [ -d "/data/local/chroot-distro/$d" ]; then
+        if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ]; then
             INSTALLED_DISTROS+=("$d")
         fi
     done
@@ -61,16 +64,16 @@ if [ -z "$SELECTED_DISTRO" ]; then
         echo ""
         print_divider
         print_centered "${CYAN}${BOLD}Please select which environment to fix, or run the installer:${RESET}"
-        print_centered "  ${WHITE}1)${RESET} fedora                                       "
-        print_centered "  ${WHITE}2)${RESET} debian                                       "
+        print_centered "  ${WHITE}1)${RESET} debian                                       "
+        print_centered "  ${WHITE}2)${RESET} fedora                                       "
         print_centered "  ${WHITE}3)${RESET} archlinux                                    "
         print_centered "  ${WHITE}4)${RESET} I haven't run setup.sh yet (Run installer) "
         print_divider
         read -p "Select a number (1-4): " fallback_choice
         
         case "$fallback_choice" in
-            1) SELECTED_DISTRO="fedora" ;;
-            2) SELECTED_DISTRO="debian" ;;
+            1) SELECTED_DISTRO="debian" ;;
+            2) SELECTED_DISTRO="fedora" ;;
             3) SELECTED_DISTRO="archlinux" ;;
             4) 
                 echo -e "${GREEN}Starting installer...${RESET}"
@@ -98,12 +101,110 @@ if [ -z "$SELECTED_DISTRO" ]; then
     echo "$SELECTED_DISTRO" > "$HOME/.chroot_distro"
 fi
 
-echo -e "${CYAN}${BOLD}Please select the graphics driver backend you want to apply to ${SELECTED_DISTRO}:${RESET}"
-echo "  1. Zink (Vulkan to OpenGL) - Best for Adreno 6xx, 7xx, 8xx"
-echo "  2. Freedreno (Native OpenGL) - Best for older Adrenos or if Zink fails"
-echo "  3. VirGL - Required for Mali, PowerVR, Exynos, Tensor chipsets"
-echo "  4. LLVMpipe - Software Rendering (Slowest, maximum compatibility)"
-read -p "Select driver (1-4): " driver_choice
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ================= UI OVERHAUL: TIERED MENUS =================
+
+echo ""
+print_divider
+print_centered "${WHITE}${BOLD}Select your device's SoC Platform:${RESET}"
+echo ""
+print_centered "  ${CYAN}1)${RESET} Adreno (Qualcomm Snapdragon) "
+print_centered "  ${CYAN}2)${RESET} Tensor (Google Pixel)        "
+print_centered "  ${CYAN}3)${RESET} Exynos (Samsung)             "
+print_centered "  ${CYAN}4)${RESET} Mali / PowerVR / Other       "
+print_centered "  ${CYAN}5)${RESET} Auto-Detect Hardware         "
+print_divider
+echo ""
+read -rp "Select Platform (1-5): " plat_choice
+
+driver_choice=""
+
+if [ "$plat_choice" == "5" ]; then
+    echo -e "${YELLOW}Running Auto-Detection...${RESET}"
+    if [ -f "$SCRIPT_DIR/gpu_detect.sh" ]; then
+        source "$SCRIPT_DIR/gpu_detect.sh"
+        detect_adreno_gpu
+        if [ "$IS_ADRENO" = true ]; then
+            log_info "Detected: Adreno $ADRENO_SERIES GPU ($MODEL_NUM)"
+            plat_choice="1"
+            if [ "$ADRENO_SERIES" == "A8XX" ]; then gen_choice="1"; fi
+            if [ "$ADRENO_SERIES" == "A7XX" ]; then gen_choice="2"; fi
+            if [ "$ADRENO_SERIES" == "A6XX" ]; then gen_choice="3"; fi
+            if [ "$ADRENO_SERIES" == "A5XX" ] || [ "$ADRENO_SERIES" == "Generic" ]; then gen_choice="4"; fi
+        else
+            log_info "Detected: $GPU_VENDOR ($MODEL_NUM)"
+            plat_choice="4"
+        fi
+    else
+        log_warn "gpu_detect.sh not found. Falling back to manual selection."
+        plat_choice=""
+    fi
+fi
+
+if [ "$plat_choice" == "1" ]; then
+    if [ -z "$gen_choice" ]; then
+        echo ""
+        print_divider
+        print_centered "${WHITE}${BOLD}Select your Adreno GPU Generation:${RESET}"
+        echo ""
+        print_centered "  ${CYAN}1)${RESET} A8XX Series (Snapdragon 8s Gen 4 / 8 Elite) "
+        print_centered "  ${CYAN}2)${RESET} A7XX Series (Snapdragon 8 Gen 2 / 8 Gen 3)  "
+        print_centered "  ${CYAN}3)${RESET} A6XX Series (Snapdragon 845 to 8 Gen 1)     "
+        print_centered "  ${CYAN}4)${RESET} A5XX Series or older                        "
+        print_divider
+        echo ""
+        read -rp "Select Generation (1-4): " gen_choice
+    fi
+    
+    echo ""
+    print_divider
+    print_centered "${WHITE}${BOLD}Select Graphics Backend:${RESET}"
+    echo ""
+    if [[ "$gen_choice" == "4" ]]; then
+        print_centered "  ${CYAN}1)${RESET} Zink/Turnip (Experimental on old GPUs)  "
+        print_centered "  ${CYAN}2)${RESET} Freedreno (Recommended native OpenGL)   "
+    else
+        print_centered "  ${CYAN}1)${RESET} Zink/Turnip (Recommended Vulkan API)    "
+        print_centered "  ${CYAN}2)${RESET} Freedreno (Legacy fallback)             "
+    fi
+    print_centered "  ${CYAN}3)${RESET} VirGL (Universal software fallback)       "
+    print_centered "  ${CYAN}4)${RESET} LLVMpipe (Pure CPU Software Rendering)    "
+    print_divider
+    echo ""
+    read -rp "Select Driver (1-4): " drv_choice
+    
+    case "$drv_choice" in
+        1) driver_choice="1" ;; # Zink
+        2) driver_choice="2" ;; # Freedreno
+        3) driver_choice="3" ;; # VirGL
+        4) driver_choice="4" ;; # LLVMpipe
+        *) echo "Invalid selection."; exit 1 ;;
+    esac
+
+elif [[ "$plat_choice" == "2" || "$plat_choice" == "3" || "$plat_choice" == "4" ]]; then
+    echo ""
+    print_divider
+    print_centered "${YELLOW}Turnip/Zink is exclusive to Adreno GPUs.${RESET}"
+    print_centered "${WHITE}For non-Adreno chips, VirGL is highly recommended.${RESET}"
+    echo ""
+    print_centered "  ${CYAN}1)${RESET} VirGL (Recommended Fallback)            "
+    print_centered "  ${CYAN}2)${RESET} LLVMpipe (Pure CPU Software Rendering)  "
+    print_divider
+    echo ""
+    read -rp "Select Driver (1-2): " drv_choice
+    
+    case "$drv_choice" in
+        1) driver_choice="3" ;; # VirGL
+        2) driver_choice="4" ;; # LLVMpipe
+        *) echo "Invalid selection."; exit 1 ;;
+    esac
+else
+    echo -e "${RED}Invalid choice. Exiting.${RESET}"
+    exit 1
+fi
+
+# ==============================================================
 
 # Enforce device permissions on host just in case
 chmod 666 /dev/kgsl-3d0 2>/dev/null || true
@@ -212,7 +313,6 @@ case "$driver_choice" in
                     echo 'mkdir -p $XDG_RUNTIME_DIR' >> /etc/profile.d/termux_env.sh
                     echo 'chmod 700 $XDG_RUNTIME_DIR' >> /etc/profile.d/termux_env.sh
                 fi
-
             "
         else
             log_info "Configuring environment for Freedreno..."
@@ -269,6 +369,13 @@ case "$driver_choice" in
         echo -e "${RED}Invalid choice. Exiting.${RESET}"
         exit 1
         ;;
+esac
+
+case "$driver_choice" in
+    1) echo "Turnip Vulkan / Zink OpenGL ES (Hardware)" > /tmp/gpu_driver_name.txt ;;
+    2) echo "Freedreno Native OpenGL (Hardware)" > /tmp/gpu_driver_name.txt ;;
+    3) echo "VirGL (Universal Software Fallback)" > /tmp/gpu_driver_name.txt ;;
+    4) echo "LLVMpipe (Pure CPU Software Rendering)" > /tmp/gpu_driver_name.txt ;;
 esac
 
 log_success "Graphics drivers successfully updated for $SELECTED_DISTRO!"

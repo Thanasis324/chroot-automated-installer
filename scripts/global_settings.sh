@@ -1,1 +1,1 @@
-SETUP_MODE="false"
+SETUP_MODE="true"

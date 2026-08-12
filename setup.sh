@@ -39,13 +39,13 @@ print_banner() {
     clear
     echo -e "${CYAN}${BOLD}"
     echo "================================================================================"
-    echo "  _____ _____ ____  __  ____  FX   _  _  ____ _____ _   _ ____                  "
-    echo " |_   _| ____|  _ \|  \/  | |  | | | |/ ___|_   _| | | |  _ \                 "
-    echo "   | | |  _| | |_) | |\/| | |  | | | | |     | | | | | | |_) |                "
-    echo "   | | | |___|  _ <| |  | | |__| |_| | |___  | | | |_| |  __/                 "
-    echo "   |_| |_____|_| \_\_|  |_|\____\___/ \____| |_|  \___/|_|                    "
+    echo "       _   _   _ _____ ___   ____ _   _ ____   ___   ___ _____                  "
+    echo "      / \\ | | | |_   _/ _ \\ / ___| | | |  _ \\ / _ \\ / _ \\_   _|                 "
+    echo "     / _ \\| | | | | || | | | |   | |_| | |_) | | | | | | || |                   "
+    echo "    / ___ \\ |_| | | || |_| | |___|  _  |  _ <| |_| | |_| || |                   "
+    echo "   /_/   \\_\\___/  |_| \\___/ \\____|_| |_|_| \\_\\\\___/ \\___/ |_|                   "
     echo "                                                                                "
-    echo "        Termux Debian X11 & Touch Desktop Automated Installer                   "
+    echo "        Termux Linux X11 & Touch Desktop Automated Installer                    "
     echo "================================================================================"
     echo -e "${RESET}"
 }
@@ -67,6 +67,7 @@ log_error() {
 }
 
 log_section() {
+    print_banner
     echo ""
     echo -e "${PURPLE}${BOLD}>>> $1 <<<${RESET}"
     local term_width=$(tput cols 2>/dev/null || echo 80)
@@ -394,84 +395,7 @@ install_chroot_distro() {
     log_success "${SELECTED_DISTRO^^} chroot environment is ready."
 }
 
-# --- Step 5: GPU Detection & Driver Selection ---
-detect_gpu_architecture() {
-    log_section "Step 5: Detecting GPU Architecture & Adreno Drivers"
-    
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    GPU_DETECT_SCRIPT="$SCRIPT_DIR/scripts/gpu_detect.sh"
-
-    if [ -f "$GPU_DETECT_SCRIPT" ]; then
-        log_info "Executing GPU hardware detection module ($GPU_DETECT_SCRIPT)..."
-        source "$GPU_DETECT_SCRIPT"
-        detect_adreno_gpu >/dev/null 2>&1 || true
-    else
-        IS_ADRENO=false
-        ADRENO_SERIES="Generic"
-        GPU_VENDOR="Generic"
-        MODEL_NUM="Unknown"
-    fi
-
-    if [ "$GPU_VENDOR" = "Generic" ] || [ "$GPU_VENDOR" = "Generic/Software" ] || [ -z "$GPU_VENDOR" ]; then
-        echo -e "${YELLOW}Could not automatically detect your GPU architecture.${RESET}"
-        echo -e "${CYAN}${BOLD}Please select your device's GPU type to configure hardware acceleration:${RESET}"
-        echo "  1. Qualcomm Adreno (Snapdragon)"
-        echo "  2. Other (Mali, PowerVR, Exynos, etc.) -> Uses VirGL fallback"
-        read -p "Select GPU type (1 or 2): " gpu_choice
-        
-        if [ "$gpu_choice" == "1" ]; then
-            IS_ADRENO=true
-            GPU_VENDOR="Qualcomm Adreno"
-            echo ""
-            print_divider
-            print_centered "${CYAN}${BOLD}Adreno GPU Version Selection:${RESET}"
-            echo ""
-            print_centered "  ${WHITE}1)${RESET} 8xx Series (e.g., Snap. 8 Elite, 8S Gen 4)            "
-            print_centered "  ${WHITE}2)${RESET} 7xx Series (e.g., Snap. 8 Gen 1-3, 7+ Gen 2)          "
-            print_centered "  ${WHITE}3)${RESET} 6xx Series (e.g., Snap. 888, 870, 865, 855)           "
-            print_centered "  ${WHITE}4)${RESET} Older / Other (Fallback to generic Turnip)              "
-            print_divider
-            echo ""
-            while true; do
-                read -p "Select your Adreno series (1-4): " adreno_choice
-                case "$adreno_choice" in
-                    1) ADRENO_SERIES="8xx"; break ;;
-                    2) ADRENO_SERIES="7xx"; break ;;
-                    3) ADRENO_SERIES="6xx"; break ;;
-                    4) ADRENO_SERIES="Generic"; break ;;
-                    *) log_warn "Invalid choice. Please select 1-4." ;;
-                esac
-            done
-            log_info "Selected Adreno Series: $ADRENO_SERIES"
-        else
-            IS_ADRENO=false
-            GPU_VENDOR="Other"
-            ADRENO_SERIES="Generic"
-        fi
-    fi
-    DRIVER_TYPE="software"
-
-    log_info "Detected GPU Vendor: ${GPU_VENDOR:-Generic}"
-    log_info "Detected Model ID: ${MODEL_NUM:-Unknown}"
-
-    if [ "$IS_ADRENO" = "true" ]; then
-        if [ "$ADRENO_SERIES" == "A5XX" ]; then
-            log_success "Identified Qualcomm Adreno GPU (A5XX)!"
-            log_success "Selected Native Freedreno OpenGL Hardware Driver Set."
-        else
-            log_success "Identified Qualcomm Adreno GPU (${ADRENO_SERIES:-A8XX})!"
-            log_success "Selected Turnip Freedreno Vulkan & Zink OpenGL ES Hardware Driver Set."
-        fi
-    else
-        log_warn "Non-Adreno GPU or software stack detected (${GPU_VENDOR:-Generic}). Selected LLVMpipe high-performance rendering fallback."
-    fi
-
-    export IS_ADRENO
-    export ADRENO_SERIES
-    export GPU_VENDOR
-    export MODEL_NUM
-    export DRIVER_TYPE
-}
+## GPU configuration has been decoupled and is now handled by fix_gpu.sh at the end of setup
 
 # --- Step 6: Configure System & Touch DE ---
 configure_chroot_system() {
@@ -541,9 +465,9 @@ verify_and_finish() {
     chmod 666 /dev/dri/* 2>/dev/null || true
 
     if [ -f "./scripts/fix_gpu.sh" ]; then
-        bash ./scripts/fix_gpu.sh
+        bash ./scripts/fix_gpu.sh "$SELECTED_DISTRO"
     elif [ -f "$HOME/Termux Script/scripts/fix_gpu.sh" ]; then
-        bash "$HOME/Termux Script/scripts/fix_gpu.sh"
+        bash "$HOME/Termux Script/scripts/fix_gpu.sh" "$SELECTED_DISTRO"
     else
         log_warn "Could not locate scripts/fix_gpu.sh to perform automatic hardware test."
     fi
@@ -580,22 +504,25 @@ verify_and_finish() {
     fi
     echo -e "${RESET}"
 
+    GPU_DRIVER_NAME="Unknown (Check fix_gpu.sh logs)"
+    if [ -f /tmp/gpu_driver_name.txt ]; then
+        GPU_DRIVER_NAME=$(cat /tmp/gpu_driver_name.txt)
+        rm -f /tmp/gpu_driver_name.txt
+    fi
+
     echo -e "${CYAN}${BOLD}"
     echo "================================================================================"
     echo "                          SUMMARY & INSTRUCTIONS                                "
     echo "================================================================================"
     echo -e "${WHITE}1. Distro Manager:   ${GREEN}$DISTRO_CMD (Python PyPI chroot-distro)${WHITE}"
-    echo -e "${WHITE}2. Debian Username:  ${YELLOW}$USERNAME${WHITE}"
-    echo -e "${WHITE}3. Sudo Privileges:  ${GREEN}Granted (Passwordless sudo for $USERNAME)${WHITE}"
-    echo -e "${WHITE}4. Audio Protocol:   ${GREEN}PulseAudio TCP (127.0.0.1:4713)${WHITE}"
-    echo -e "${WHITE}5. Display Output:   ${GREEN}Termux:X11 (DISPLAY=:0)${WHITE}"
-    if [ "$ADRENO_SERIES" == "A5XX" ]; then
-        echo -e "${WHITE}6. GPU Driver:       ${GREEN}Freedreno ${ADRENO_SERIES} (Native OpenGL ARM64)${WHITE}"
-    else
-        echo -e "${WHITE}6. GPU Driver:       ${GREEN}Turnip ${ADRENO_SERIES:-A8XX} (Vulkan/Zink Freedreno ARM64)${WHITE}"
-    fi
-    echo -e "${WHITE}7. Desktop Env:      ${GREEN}Touch-Optimized XFCE4 Desktop (with Onboard virtual keyboard)${WHITE}"
-    echo -e "${WHITE}8. Helper Utilities: ${GREEN}gpu-status, enable-zink, enable-freedreno, enable-software${WHITE}"
+    echo -e "${WHITE}2. OS Installed:     ${GREEN}${SELECTED_DISTRO^^}${WHITE}"
+    echo -e "${WHITE}3. Username:         ${YELLOW}$USERNAME${WHITE}"
+    echo -e "${WHITE}4. Sudo Privileges:  ${GREEN}Granted (Passwordless sudo for $USERNAME)${WHITE}"
+    echo -e "${WHITE}5. Audio Protocol:   ${GREEN}PulseAudio TCP (127.0.0.1:4713)${WHITE}"
+    echo -e "${WHITE}6. Display Output:   ${GREEN}Termux:X11 (DISPLAY=:0)${WHITE}"
+    echo -e "${WHITE}7. GPU Driver:       ${GREEN}$GPU_DRIVER_NAME${WHITE}"
+    echo -e "${WHITE}8. Desktop Env:      ${GREEN}Touch-Optimized XFCE4 Desktop (with virtual keyboard)${WHITE}"
+    echo -e "${WHITE}9. Helper Utilities: ${GREEN}gpu-status, enable-zink, enable-freedreno, enable-software${WHITE}"
     echo "--------------------------------------------------------------------------------"
     echo -e "${YELLOW}${BOLD}HOW TO RUN:${RESET}"
     echo -e "${WHITE}  - Open the ${CYAN}Termux:X11${WHITE} app on your Android device."
@@ -612,7 +539,7 @@ main() {
         get_distro_selection
         get_user_credentials
         install_chroot_distro
-        detect_gpu_architecture
+        # GPU driver configuration is handled externally at the end
         configure_chroot_system
         setup_launchers
         verify_and_finish
