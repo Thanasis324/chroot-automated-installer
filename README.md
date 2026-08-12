@@ -6,7 +6,7 @@ An automated, touch-optimized, and graphically appealing installation script for
 
 ## 📊 Project Status
 
-- **Debian**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
+- **Debian**: 🟡 GPU acceleration technically works, not tested yet.
 - **Fedora**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
 - **Arch Linux**: 🟡 Planned for a future update. The core architecture is implemented, but the package stack is currently under testing.
 
