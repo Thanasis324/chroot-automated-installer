@@ -11,9 +11,9 @@ An automated, touch-optimized, and graphically appealing installation script for
 - **Termux** app installed. (Download the latest release from [F-Droid](https://f-droid.org/packages/com.termux/) or [GitHub](https://github.com/termux/termux-app/releases))
 - **Termux:X11** app installed. (Download the latest nightly release from [GitHub](https://github.com/termux/termux-x11/releases/tag/nightly))
 - **Rooted Device** (Required for `chroot-distro`). *Not sure what Android rooting is? Read this [ad-free, FOSS guide on Rooting with Magisk](https://topjohnwu.github.io/Magisk/).*
-- **Recommended Termux:X11 Settings : **
-1)output -> Fullscreen : on
-2)pointer -> touchscreen input mode: Direct touch
+- **Recommended Termux:X11 Settings:**
+  1. Output ➔ **Fullscreen**: `on`
+  2. Pointer ➔ **Touchscreen input mode**: `Direct touch`
 
 ### Installation Guide
 
