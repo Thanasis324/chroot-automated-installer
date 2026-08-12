@@ -105,13 +105,21 @@ elif [ "$DISTRO_NAME" = "archlinux" ]; then
 else
     export DEBIAN_FRONTEND=noninteractive
     
-    # Add Freedesktop.org CI Mesa Nightly Repo for absolute latest Mesa drivers (Trixie)
-    echo "deb [trusted=yes] https://gitlab.freedesktop.org/gfx-ci/ci-deb-repo/-/raw/trixie trixie main" > /etc/apt/sources.list.d/gfx-ci.list
+    # Add official Debian experimental repo for latest Mesa drivers
+    echo "deb http://deb.debian.org/debian experimental main" > /etc/apt/sources.list.d/experimental.list
     
-    apt-get update -y && apt-get upgrade -y
+    apt-get update -y || true
+    apt-get upgrade -y || true
 
-    apt-get install -y --no-install-recommends \
-        sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-theme papirus-icon-theme fonts-noto fonts-dejavu libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgl1 mesa-utils vulkan-tools virgl-server libvirglrenderer1 libdisplay-info-dev chromium policykit-1-gnome || apt-get install -y sudo dbus dbus-x11 dconf-cli pulseaudio-utils xfce4 xfce4-goodies onboard mesa-utils mesa-vulkan-drivers libgl1-mesa-dri libdisplay-info-dev chromium policykit-1-gnome
+    DEB_DEPS=(sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-theme papirus-icon-theme fonts-noto fonts-dejavu libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgl1 mesa-utils vulkan-tools virgl-server libvirglrenderer1 libdisplay-info-dev chromium)
+    
+    # Bulk install first for speed, fallback to sequential if a package is invalid
+    if ! apt-get install -y --no-install-recommends -t experimental "${DEB_DEPS[@]}"; then
+        echo -e "${YELLOW}Bulk installation failed. Retrying packages sequentially...${RESET}"
+        for dep in "${DEB_DEPS[@]}"; do
+            apt-get install -y --no-install-recommends -t experimental "$dep" || apt-get install -y --no-install-recommends "$dep" || echo -e "${RED}Skipped missing package: $dep${RESET}"
+        done
+    fi
 fi
 fi
 
