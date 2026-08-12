@@ -1,7 +1,14 @@
 # Termux Automated Linux Chroot Setup Script
 
-**Status:** Debian & Fedora work with all GPUs. Arch Linux (planned).
 An automated, touch-optimized, and graphically appealing installation script for running **Fedora**, **Debian**, or **Arch Linux** inside **Termux** natively using **`chroot-distro`**. This script integrates **Termux:X11** display output, **PulseAudio** sound, and flawless hardware-accelerated **Qualcomm Adreno Turnip/Zink (A6XX / A7XX / A8XX) GPU Drivers** (alongside VirGL fallbacks).
+
+---
+
+## 📊 Project Status
+
+- **Debian**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
+- **Fedora**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
+- **Arch Linux**: 🟡 Planned for a future update. The core architecture is implemented, but the package stack is currently under testing.
 
 ---
 
