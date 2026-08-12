@@ -69,6 +69,20 @@ Once installation finishes, start your system:
 
 ---
 
+## ⚙️ Post-Install Configuration (`configure.sh`)
+
+If you ever need to change your settings, fix broken packages, update drivers, or safely remove the operating system, you can use the central configuration hub:
+
+```bash
+./configure.sh
+```
+
+**Available Options:**
+1. **Fix / Update GPU Drivers**: Launches a tiered interactive menu that lets you change your SoC platform (Adreno/Tensor/Exynos), Adreno Generation, and Graphics Backend (Turnip+Zink / Freedreno / VirGL / LLVMpipe). Ideal if you upgraded your phone or chose the wrong driver during setup.
+2. **Repair Distro Packages & Settings**: Fixes broken apt/dnf/pacman packages, heals a broken XFCE4 desktop environment, or resets user configurations back to factory defaults without erasing the whole OS.
+3. **Manage Passwordless Sudo**: Dynamically toggle whether your Linux user account requires a password to execute root-level commands.
+4. **Manage Storage / Uninstall**: A safe removal utility that lets you delete specific Linux distributions (Debian/Fedora/Arch) to free up space, or completely eradicate the installer and its dependencies from Termux.
+
 ## 🛠️ Repository Architecture
 
 - **`setup.sh`**: The master installer. Features smart privilege-dropping to safely execute `apt`/`pkg` commands (fixing Termux Curl/SSL fresh-install bugs), then cleanly elevates to root.
