@@ -80,7 +80,7 @@ if [ -z "$SELECTED_DISTRO" ]; then
             4) exit 0 ;;
             *) log_error "Invalid choice. Exiting."; exit 1 ;;
         esac
-    elif [ ${#INSTALLED_DISTROS[@]} -eq 1 ]; then
+    elif [ "$AUTOCHROOT_MANUAL" != "1" ] && [ ${#INSTALLED_DISTROS[@]} -eq 1 ]; then
         SELECTED_DISTRO="${INSTALLED_DISTROS[0]}"
         echo -e "${GREEN}Auto-selected installed distribution: ${SELECTED_DISTRO^^}${RESET}"
     else

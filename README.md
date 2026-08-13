@@ -28,27 +28,21 @@ An automated, touch-optimized, and graphically appealing installation script for
 #### Step 1: Clone the Repository
 Open Termux and download the latest version of the installer using `git`:
 ```bash
-pkg install wget unzip -y
-wget https://github.com/Thanasis324/chroot-automated-installer/archive/refs/heads/main.zip -O installer.zip
-unzip installer.zip
-mv chroot-automated-installer-main chroot-automated-installer
-cd chroot-automated-installer
+curl -sL https://raw.githubusercontent.com/Thanasis324/chroot-automated-installer/main/install.sh | bash
 ```
 
-
-#### Step 2: Set Permissions
-Make all the installation and boot scripts executable:
+After the installation finishes, simply type:
 ```bash
-chmod +x setup.sh start-chroot.sh uninstall.sh scripts/*.sh
+autochroot setup
 ```
 
-#### Step 3: Launch Installer
+#### Step 2: Run the Installer
 Run the setup script directly as your standard Termux user (**Do NOT run with sudo!** The script intelligently elevates privileges automatically when needed):
 ```bash
-./setup.sh
+autochroot setup
 ```
 
-#### Step 4: Interactive Setup & Mirror Selection
+#### Step 3: Interactive Setup & Mirror Selection
 The script features an advanced setup UI that will guide you through:
 1. **Repository Mirror Selection**: Automatically launches `termux-change-repo` so you can select the fastest mirror for your region.
 2. **Linux Distribution Selection**: 
@@ -58,24 +52,22 @@ The script features an advanced setup UI that will guide you through:
 3. **Desired Username & Password**
 4. **GPU Architecture Fallback**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx/5xx** or **VirGL (Mali/PowerVR/Exynos/Tensor)**.
 
-#### Step 5: Launch your Touch Desktop (Do NOT use sudo!)
+#### Step 3: Launch your Touch Desktop (Do NOT use sudo!)
 Once installation finishes, start your system:
 1. Open the **Termux:X11** app on your Android device.
 2. Launch the desktop directly as a regular Termux user:
    ```bash
-   ./start-chroot.sh
-   # OR simply type
-   startchroot
+   autochroot start
    ```
 
 ---
 
-## 🛠️ Post-Install Configuration (`configure.sh`)
+## 🛠️ Post-Install Configuration (`autochroot config`)
 
 If you ever need to change your settings, fix broken packages, update drivers, or safely remove the operating system, you can use the central configuration hub:
 
 ```bash
-./configure.sh
+autochroot config
 ```
 
 **Available Options:**

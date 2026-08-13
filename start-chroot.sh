@@ -46,7 +46,7 @@ if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
             ;;
     esac
 else
-    if [ ${#INSTALLED_DISTROS[@]} -eq 1 ]; then
+    if [ "$AUTOCHROOT_MANUAL" != "1" ] && [ ${#INSTALLED_DISTROS[@]} -eq 1 ]; then
         SELECTED_DISTRO="${INSTALLED_DISTROS[0]}"
     else
         echo -e "${CYAN}${BOLD}Multiple OS environments detected. Please select which one to launch:${RESET}"
@@ -69,8 +69,8 @@ if [ -z "$SCRIPT_DIR" ]; then SCRIPT_DIR="$PWD"; fi
 
 if [ -f "$SCRIPT_DIR/scripts/start_${SELECTED_DISTRO}.sh" ]; then
     exec bash "$SCRIPT_DIR/scripts/start_${SELECTED_DISTRO}.sh" "$@"
-elif [ -f "$HOME/Termux Script/scripts/start_${SELECTED_DISTRO}.sh" ]; then
-    exec bash "$HOME/Termux Script/scripts/start_${SELECTED_DISTRO}.sh" "$@"
+elif [ -f "$HOME/chroot-automated-installer/scripts/start_${SELECTED_DISTRO}.sh" ]; then
+    exec bash "$HOME/chroot-automated-installer/scripts/start_${SELECTED_DISTRO}.sh" "$@"
 else
     echo -e "${YELLOW}Error: Sub-script for ${SELECTED_DISTRO} not found at expected paths!${RESET}"
     exit 1

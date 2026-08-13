@@ -435,25 +435,7 @@ setup_launchers() {
         exit 1
     fi
 
-    TARGET_PATHS=(
-        "$HOME/start-chroot.sh"
-        "/data/data/com.termux/files/home/start-chroot.sh"
-    )
-
-    for path in "${TARGET_PATHS[@]}"; do
-        mkdir -p "$(dirname "$path")" 2>/dev/null || true
-        cp "$START_SCRIPT" "$path" 2>/dev/null || true
-        chmod 777 "$path" 2>/dev/null || chmod +x "$path" 2>/dev/null || true
-    done
-
-    PREFIX_BIN="${PREFIX:-/data/data/com.termux/files/usr}/bin"
-    if [ -d "$PREFIX_BIN" ]; then
-        cp "$START_SCRIPT" "$PREFIX_BIN/startchroot" 2>/dev/null || true
-        cp "$START_SCRIPT" "$PREFIX_BIN/start-chroot" 2>/dev/null || true
-        chmod 777 "$PREFIX_BIN/startchroot" "$PREFIX_BIN/start-chroot" 2>/dev/null || chmod +x "$PREFIX_BIN/startchroot" "$PREFIX_BIN/start-chroot" 2>/dev/null || true
-    fi
-    
-    log_success "Launcher script created: './start-chroot.sh' and command 'startchroot'."
+    log_success "Launcher script successfully prepared in repository."
 }
 
 # --- Step 8: GPU Driver Verification & Final Output ---
@@ -526,7 +508,7 @@ verify_and_finish() {
     echo "--------------------------------------------------------------------------------"
     echo -e "${YELLOW}${BOLD}HOW TO RUN:${RESET}"
     echo -e "${WHITE}  - Open the ${CYAN}Termux:X11${WHITE} app on your Android device."
-    echo -e "${WHITE}  - Run launcher directly (${RED}${BOLD}Do NOT use sudo${RESET}${WHITE}): ${GREEN}./start-chroot.sh${WHITE} (or ${GREEN}startchroot${WHITE})"
+    echo -e "${WHITE}  - Run launcher globally (${RED}${BOLD}Do NOT use sudo${RESET}${WHITE}): ${GREEN}autochroot start${WHITE}"
     echo "================================================================================"
     echo -e "${RESET}"
 }
