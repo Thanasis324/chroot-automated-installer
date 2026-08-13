@@ -121,17 +121,50 @@ else
         done
     fi
 
-    echo -e "${YELLOW}Downloading bleeding-edge Mesa drivers from GitHub...${RESET}"
+    echo -e "${YELLOW}Acquiring bleeding-edge Mesa drivers...${RESET}"
     cd /tmp
-    wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/download/v0.6/mesa-debs-trixie.zip || curl -sL -O https://github.com/Thanasis324/chroot-automated-installer/releases/download/v0.6/mesa-debs-trixie.zip
     
-    if [ -f mesa-debs-trixie.zip ]; then
+    # 1. Try downloading from GitHub if not already present
+    if [ ! -f "mesa-debs-trixie.zip" ]; then
+        wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip || curl -sL -o mesa-debs-trixie.zip https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip
+    fi
+    
+    # 2. Check if ZIP is valid
+    if [ -f "mesa-debs-trixie.zip" ] && unzip -t mesa-debs-trixie.zip >/dev/null 2>&1; then
+        echo -e "${GREEN}Valid Mesa zip found. Extracting...${RESET}"
         unzip -q mesa-debs-trixie.zip
         echo -e "${YELLOW}Installing Mesa packages...${RESET}"
-        apt-get install -y --no-install-recommends ./mesa_debs/*.deb
+        apt-get install -y --no-install-recommends ./mesa_debs/*.deb || true
         rm -rf mesa-debs-trixie.zip mesa_debs
     else
-        echo -e "${RED}[WARNING] Failed to download Mesa packages. Graphics performance may be degraded.${RESET}"
+        echo -e "${RED}[WARNING] GitHub ZIP failed or invalid. Falling back to direct Freedesktop download...${RESET}"
+        rm -f mesa-debs-trixie.zip
+        
+        # 3. Direct Fallback to GitLab
+        mkdir -p /tmp/mesa_debs
+        cd /tmp/mesa_debs
+        BASE_URL="https://gitlab.freedesktop.org/gfx-ci/ci-deb-repo/-/raw/trixie/dists/trixie/main/binary-arm64"
+        PKGS=("libgl1-mesa-dri" "mesa-vulkan-drivers" "libvulkan1" "libglx-mesa0" "libegl-mesa0" "mesa-libgallium" "libgl1" "mesa-utils" "libglapi-mesa" "libgbm1")
+        
+        curl -sL "$BASE_URL/Packages" > Packages.txt
+        for pkg in "${PKGS[@]}"; do
+            FILE_PATH=$(awk -v pkg="^Package: $pkg\$" '$0 ~ pkg {found=1} found && /^Filename:/ {print $2; exit}' Packages.txt)
+            if [ -n "$FILE_PATH" ]; then
+                echo "Downloading $pkg..."
+                curl -sL "https://gitlab.freedesktop.org/gfx-ci/ci-deb-repo/-/raw/trixie/$FILE_PATH" -o "$(basename "$FILE_PATH")"
+            fi
+        done
+        
+        echo -e "${YELLOW}Installing Mesa packages...${RESET}"
+        if ls ./*.deb 1> /dev/null 2>&1; then
+            apt-get install -y --no-install-recommends ./*.deb || true
+        else
+            echo -e "${RED}[CRITICAL] Both GitHub and GitLab downloads failed! Falling back to standard Debian repository...${RESET}"
+            apt-get install -y --no-install-recommends libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 libglx-mesa0 libegl-mesa0 libgl1 libglapi-mesa libgbm1 || true
+        fi
+        
+        cd /tmp
+        rm -rf mesa_debs
     fi
 fi
 fi

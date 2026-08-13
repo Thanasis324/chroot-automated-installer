@@ -18,6 +18,7 @@ PKGS=(
     "libvulkan1"
     "libglx-mesa0"
     "libegl-mesa0"
+    "mesa-libgallium"
     "libgl1"
     "mesa-utils"
     "libglapi-mesa"

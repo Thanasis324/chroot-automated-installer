@@ -25,17 +25,22 @@ fi
 REPO_DIR="$HOME/chroot-automated-installer"
 
 if [ "$LOCAL_INSTALL" -eq 0 ]; then
-    if [ -d "$REPO_DIR" ]; then
-        echo -e "${YELLOW}Existing installation found. Removing old version...${RESET}"
-        rm -rf "$REPO_DIR"
+    if [ -d "$REPO_DIR/.git" ]; then
+        echo -e "${YELLOW}Existing Git repository found. Pulling latest changes...${RESET}"
+        cd "$REPO_DIR"
+        git pull origin main || true
+    else
+        if [ -d "$REPO_DIR" ]; then
+            echo -e "${YELLOW}Existing standard installation found. Removing old version...${RESET}"
+            rm -rf "$REPO_DIR"
+        fi
+        echo -e "${YELLOW}Downloading latest release...${RESET}"
+        cd "$HOME"
+        wget -q https://github.com/Thanasis324/chroot-automated-installer/archive/refs/heads/main.zip -O installer.zip
+        unzip -q installer.zip
+        mv chroot-automated-installer-main chroot-automated-installer
+        rm installer.zip
     fi
-
-    echo -e "${YELLOW}Downloading latest release...${RESET}"
-    cd "$HOME"
-    wget -q https://github.com/Thanasis324/chroot-automated-installer/archive/refs/heads/main.zip -O installer.zip
-    unzip -q installer.zip
-    mv chroot-automated-installer-main chroot-automated-installer
-    rm installer.zip
 fi
 
 echo -e "${YELLOW}Setting permissions...${RESET}"

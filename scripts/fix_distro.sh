@@ -136,6 +136,12 @@ fi
 
 SETUP_B64=$(base64 -w0 "$DISTRO_SETUP_SCRIPT" 2>/dev/null || base64 "$DISTRO_SETUP_SCRIPT" | tr -d '\r\n')
 
+# Inject local Mesa drivers zip if it exists (for offline/developer testing)
+ROOTFS_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/chroot-distro/installed-rootfs/$SELECTED_DISTRO"
+if [ -d "$ROOTFS_DIR/tmp" ] && [ -f "$SCRIPT_DIR/mesa-debs-trixie.zip" ]; then
+    cp "$SCRIPT_DIR/mesa-debs-trixie.zip" "$ROOTFS_DIR/tmp/mesa-debs-trixie.zip" 2>/dev/null || true
+fi
+
 $DISTRO_CMD login $SELECTED_DISTRO -- bash -c "
     export SETUP_MODE='$SETUP_MODE'
     echo '$SETUP_B64' | base64 -d > /tmp/distro_setup.sh
