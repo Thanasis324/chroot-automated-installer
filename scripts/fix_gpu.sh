@@ -285,6 +285,12 @@ case "$driver_choice" in
         ' -- "$SELECTED_DISTRO" "$driver_choice"
         
         if [ "$driver_choice" == "1" ]; then
+            if [ "$gen_choice" == "3" ] || [ "$gen_choice" == "4" ]; then
+                OPT_TU_DEBUG="kgsl,noconform"
+            else
+                OPT_TU_DEBUG="kgsl,noconform,nolrz"
+            fi
+            
             log_info "Configuring environment for Zink..."
             $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
                 # We DO NOT force GALLIUM_DRIVER=zink globally, as it crashes XFCE4 compositor.
@@ -299,9 +305,9 @@ case "$driver_choice" in
                     echo 'export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json:/etc/vulkan/icd.d/turnip_icd.json' >> /etc/profile.d/termux_env.sh
                 fi
                 if ! grep -q 'TU_DEBUG' /etc/profile.d/termux_env.sh 2>/dev/null; then
-                    echo 'export TU_DEBUG=kgsl,noconform,nolrz' >> /etc/profile.d/termux_env.sh
+                    echo 'export TU_DEBUG=$OPT_TU_DEBUG' >> /etc/profile.d/termux_env.sh
                 else
-                    sed -i 's/TU_DEBUG=.*/TU_DEBUG=kgsl,noconform,nolrz/g' /etc/profile.d/termux_env.sh 2>/dev/null || true
+                    sed -i 's/TU_DEBUG=.*/TU_DEBUG=$OPT_TU_DEBUG/g' /etc/profile.d/termux_env.sh 2>/dev/null || true
                 fi
                 if ! grep -q 'ZINK_DESCRIPTORS=lazy' /etc/profile.d/termux_env.sh 2>/dev/null; then
                     echo 'export ZINK_DESCRIPTORS=lazy' >> /etc/profile.d/termux_env.sh
