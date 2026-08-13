@@ -76,7 +76,13 @@ echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Updating package repositories and insta
 if [ "$DISTRO_NAME" = "fedora" ]; then
     dnf update -y
     dnf install -y @xfce-desktop-environment || true
-    dnf install -y sudo dbus dbus-x11 dconf pulseaudio-utils alsa-utils curl wget git figlet pciutils lshw florence arc-theme papirus-icon-theme google-noto-sans-fonts vulkan-loader mesa-vulkan-drivers mesa-dri-drivers mesa-libGL glx-utils vulkan-tools libdisplay-info polkit-gnome || true
+    FEDORA_DEPS=(sudo dbus dbus-x11 dconf pulseaudio-utils alsa-utils curl wget git figlet pciutils lshw florence arc-theme papirus-icon-theme google-noto-sans-fonts vulkan-loader mesa-vulkan-drivers mesa-dri-drivers mesa-libGL glx-utils vulkan-tools libdisplay-info polkit-gnome)
+    if ! dnf install -y "${FEDORA_DEPS[@]}"; then
+        echo -e "${YELLOW}Bulk installation failed. Retrying sequentially...${RESET}"
+        for dep in "${FEDORA_DEPS[@]}"; do
+            dnf install -y "$dep" || echo -e "${RED}Skipped missing package: $dep${RESET}"
+        done
+    fi
 elif [ "$DISTRO_NAME" = "archlinux" ]; then
     # Disable pacman sandbox which crashes in Android chroots (Landlock/ALPM user errors)
     if grep -q "^#DisableSandbox" /etc/pacman.conf; then
@@ -111,7 +117,7 @@ else
     apt-get update -y || true
     apt-get upgrade -y || true
 
-    DEB_DEPS=(sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-theme papirus-icon-theme fonts-noto fonts-dejavu vulkan-tools virgl-server libvirglrenderer1 firefox-esr libdisplay-info-dev mesa-utils)
+    DEB_DEPS=(sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-theme papirus-icon-theme fonts-noto fonts-dejavu vulkan-tools virgl-server libvirglrenderer1 firefox-esr libdisplay-info-dev mesa-utils libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 libglx-mesa0 libegl-mesa0 libgl1 libglapi-mesa libgbm1)
     
     echo -e "${YELLOW}Installing core system packages...${RESET}"
     if ! apt-get install -y --no-install-recommends "${DEB_DEPS[@]}"; then
@@ -121,51 +127,9 @@ else
         done
     fi
 
-    echo -e "${YELLOW}Acquiring bleeding-edge Mesa drivers...${RESET}"
-    cd /tmp
-    
-    # 1. Try downloading from GitHub if not already present
-    if [ ! -f "mesa-debs-trixie.zip" ]; then
-        wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip || curl -sL -o mesa-debs-trixie.zip https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip
-    fi
-    
-    # 2. Check if ZIP is valid
-    if [ -f "mesa-debs-trixie.zip" ] && unzip -t mesa-debs-trixie.zip >/dev/null 2>&1; then
-        echo -e "${GREEN}Valid Mesa zip found. Extracting...${RESET}"
-        unzip -q mesa-debs-trixie.zip
-        echo -e "${YELLOW}Installing Mesa packages...${RESET}"
-        apt-get install -y --no-install-recommends ./mesa_debs/*.deb || true
-        rm -rf mesa-debs-trixie.zip mesa_debs
-    else
-        echo -e "${RED}[WARNING] GitHub ZIP failed or invalid. Falling back to direct Freedesktop download...${RESET}"
-        rm -f mesa-debs-trixie.zip
-        
-        # 3. Direct Fallback to GitLab
-        mkdir -p /tmp/mesa_debs
-        cd /tmp/mesa_debs
-        BASE_URL="https://gitlab.freedesktop.org/gfx-ci/ci-deb-repo/-/raw/trixie/dists/trixie/main/binary-arm64"
-        PKGS=("libgl1-mesa-dri" "mesa-vulkan-drivers" "libvulkan1" "libglx-mesa0" "libegl-mesa0" "mesa-libgallium" "libgl1" "mesa-utils" "libglapi-mesa" "libgbm1")
-        
-        curl -sL "$BASE_URL/Packages" > Packages.txt
-        for pkg in "${PKGS[@]}"; do
-            FILE_PATH=$(awk -v pkg="^Package: $pkg\$" '$0 ~ pkg {found=1} found && /^Filename:/ {print $2; exit}' Packages.txt)
-            if [ -n "$FILE_PATH" ]; then
-                echo "Downloading $pkg..."
-                curl -sL "https://gitlab.freedesktop.org/gfx-ci/ci-deb-repo/-/raw/trixie/$FILE_PATH" -o "$(basename "$FILE_PATH")"
-            fi
-        done
-        
-        echo -e "${YELLOW}Installing Mesa packages...${RESET}"
-        if ls ./*.deb 1> /dev/null 2>&1; then
-            apt-get install -y --no-install-recommends ./*.deb || true
-        else
-            echo -e "${RED}[CRITICAL] Both GitHub and GitLab downloads failed! Falling back to standard Debian repository...${RESET}"
-            apt-get install -y --no-install-recommends libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 libglx-mesa0 libegl-mesa0 libgl1 libglapi-mesa libgbm1 || true
-        fi
-        
-        cd /tmp
-        rm -rf mesa_debs
-    fi
+    # 1. Standard Debian packages are now handled via DEB_DEPS list
+    # The bleeding-edge Mesa drivers are now exclusively installed via fix_gpu.sh
+    # when Adreno hardware is detected or selected by the user.
 fi
 fi
 
@@ -179,7 +143,8 @@ if [ "${RUN_USER:-yes}" = "yes" ]; then
 echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Setting up user '$USERNAME' with passwordless sudo & graphics permissions...${RESET}"
 
 # Ensure essential groups exist, including Android AID_GRAPHICS (GID 1003)
-groupadd -f sudo
+groupadd -f sudo 2>/dev/null || true
+groupadd -f wheel 2>/dev/null || true
 groupadd -f video
 groupadd -f audio
 groupadd -f render
@@ -197,7 +162,12 @@ echo "$USERNAME:$PASSWORD" | chpasswd
 echo "root:$PASSWORD" | chpasswd
 
 # Add user to hardware and permission groups
-usermod -aG sudo,video,audio,render,input,aid_graphics,graphics,aid_input,aid_bluetooth "$USERNAME" 2>/dev/null || true
+usermod -aG sudo,wheel,video,audio,render,input,aid_graphics,graphics,aid_input,aid_bluetooth "$USERNAME" 2>/dev/null || true
+
+# Ensure wheel group has sudo privileges (Critical for Arch Linux default sudoers)
+if [ -f /etc/sudoers ]; then
+    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+fi
 
 # Grant Sudo privileges without password prompt for touch convenience (if selected)
 if [ "$SUDO_CHOICE" == "yes" ]; then

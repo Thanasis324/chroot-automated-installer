@@ -245,49 +245,63 @@ case "$driver_choice" in
                 (cd /usr/lib/aarch64-linux-gnu && ln -sf $(basename $(ls libdisplay-info.so.* | grep -v "\.so\.2$" | head -n 1)) libdisplay-info.so.2)
             fi
             
-            if [ "$1" = "fedora" ]; then
-                FEDORA_VER=$(grep -oP "(?<=^VERSION_ID=).+" /etc/os-release | tr -d \")
-                LFDEVS_PATTERN="fedora_${FEDORA_VER}_arm64\.tar\.gz"
-            elif [ "$1" = "archlinux" ]; then
-                LFDEVS_PATTERN="archlinux_arm64\.tar"
-            else
-                LFDEVS_PATTERN="debian_trixie_arm64\.tar\.gz"
-            fi
-            # Bypass strict API rate limits by scraping the expanded_assets HTML fragment directly
-            LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
-            TAG=$(echo "$LATEST_URL" | awk -F "/" "{print \$NF}")
-            DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
-            if [ -n "$DOWNLOAD_URL" ]; then
-                DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
-            fi
-            
-            if [ -n "$DOWNLOAD_URL" ]; then
+            if [ "$1" = "debian" ]; then
+                echo "Downloading custom Debian Mesa bundle..."
                 cd /tmp
-                # Remove old lfdevs patches if they exist (clean update)
-                rm -rf /usr/lib64/libvulkan_freedreno.so /usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so 2>/dev/null || true
-
-                wget -q -O mesa-turnip.tar.gz "$DOWNLOAD_URL" || curl -sL "$DOWNLOAD_URL" -o mesa-turnip.tar.gz
-                if [ "$1" = "archlinux" ]; then
-                    mkdir -p /tmp/mesa-turnip
-                    tar -xf mesa-turnip.tar.gz -C /tmp/mesa-turnip/ 2>/dev/null || tar -xf mesa-turnip.tar -C /tmp/mesa-turnip/ 2>/dev/null
-                    pacman -U --noconfirm /tmp/mesa-turnip/*.pkg.tar.xz >/dev/null 2>&1
-                    rm -rf /tmp/mesa-turnip
+                wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip || curl -sL -o mesa-debs-trixie.zip https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip
+                
+                if [ -f "mesa-debs-trixie.zip" ] && unzip -t mesa-debs-trixie.zip >/dev/null 2>&1; then
+                    echo "Valid Mesa zip found. Extracting and installing..."
+                    unzip -q mesa-debs-trixie.zip
+                    apt-get install -y --no-install-recommends ./mesa_debs/*.deb || true
+                    rm -rf mesa-debs-trixie.zip mesa_debs
                 else
-                    tar -zxf mesa-turnip.tar.gz -C / >/dev/null 2>&1
-                    ldconfig 2>/dev/null || true
+                    echo "[ERROR] Failed to download or verify Debian Mesa bundle from GitHub!"
+                    rm -f mesa-debs-trixie.zip
                 fi
-                rm -f mesa-turnip.tar.gz mesa-turnip.tar
             else
-                echo "[ERROR] Failed to fetch lfdevs download URL! You might be rate-limited by GitHub API."
-                echo "Skipping driver download, but dependencies have been repaired."
+                if [ "$1" = "fedora" ]; then
+                    FEDORA_VER=$(grep -oP "(?<=^VERSION_ID=).+" /etc/os-release | tr -d \")
+                    LFDEVS_PATTERN="fedora_${FEDORA_VER}_arm64\.tar\.gz"
+                elif [ "$1" = "archlinux" ]; then
+                    LFDEVS_PATTERN="archlinux_arm64\.tar"
+                fi
+                # Bypass strict API rate limits by scraping the expanded_assets HTML fragment directly
+                LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
+                TAG=$(echo "$LATEST_URL" | awk -F "/" "{print \$NF}")
+                DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
+                if [ -n "$DOWNLOAD_URL" ]; then
+                    DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
+                fi
+                
+                if [ -n "$DOWNLOAD_URL" ]; then
+                    cd /tmp
+                    # Remove old lfdevs patches if they exist (clean update)
+                    rm -rf /usr/lib64/libvulkan_freedreno.so /usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so 2>/dev/null || true
+
+                    wget -q -O mesa-turnip.tar.gz "$DOWNLOAD_URL" || curl -sL "$DOWNLOAD_URL" -o mesa-turnip.tar.gz
+                    if [ "$1" = "archlinux" ]; then
+                        mkdir -p /tmp/mesa-turnip
+                        tar -xf mesa-turnip.tar.gz -C /tmp/mesa-turnip/ 2>/dev/null || tar -xf mesa-turnip.tar -C /tmp/mesa-turnip/ 2>/dev/null
+                        pacman -U --noconfirm --overwrite "*" /tmp/mesa-turnip/*.pkg.tar.xz >/dev/null 2>&1
+                        rm -rf /tmp/mesa-turnip
+                    else
+                        tar -zxf mesa-turnip.tar.gz -C / >/dev/null 2>&1
+                        ldconfig 2>/dev/null || true
+                    fi
+                    rm -f mesa-turnip.tar.gz mesa-turnip.tar
+                else
+                    echo "[ERROR] Failed to fetch lfdevs download URL! You might be rate-limited by GitHub API."
+                    echo "Skipping driver download, but dependencies have been repaired."
+                fi
             fi
         ' -- "$SELECTED_DISTRO" "$driver_choice"
         
         if [ "$driver_choice" == "1" ]; then
             if [ "$gen_choice" == "3" ] || [ "$gen_choice" == "4" ]; then
-                OPT_TU_DEBUG="kgsl,noconform"
+                OPT_TU_DEBUG="kgsl,sysmem,noconform"
             else
-                OPT_TU_DEBUG="kgsl,noconform,nolrz"
+                OPT_TU_DEBUG="kgsl,sysmem,noconform,nolrz"
             fi
             
             log_info "Configuring environment for Zink..."

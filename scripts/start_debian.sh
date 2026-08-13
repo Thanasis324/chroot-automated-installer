@@ -136,3 +136,6 @@ if $DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- bash -c "[ -f ~/.do
     echo -e "${RED}${BOLD}Shutting down ${SELECTED_DISTRO} environment...${RESET}"
     $DISTRO_CMD kill $SELECTED_DISTRO
 fi
+
+# Instantly free graphics RAM by killing the display server when the user exits
+pkill -9 -f termux-x11 >/dev/null 2>&1 || true

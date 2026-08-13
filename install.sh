@@ -7,6 +7,7 @@ BOLD="\033[1m"
 CYAN="\033[36m"
 GREEN="\033[32m"
 YELLOW="\033[33m"
+BLUE="\033[34m"
 RESET="\033[0m"
 
 echo -e "${CYAN}${BOLD}========================================${RESET}"
@@ -118,11 +119,10 @@ _autochroot_completions() {
 complete -F _autochroot_completions autochroot
 EOF
 
-echo -e "${GREEN}${BOLD}Installation complete!${RESET}"
-echo ""
-echo -e "${YELLOW}Note: Autocomplete has been installed! Please restart Termux by typing:${RESET}"
-echo -e "  ${CYAN}exit${RESET}"
-echo -e "${YELLOW}and reopening the app to activate it.${RESET}"
-echo ""
 # Automatically run the help menu so the user sees the commands immediately
 "$PREFIX_BIN/autochroot" -h
+
+echo ""
+echo -e "${GREEN}${BOLD}✓ Installation Complete!${RESET}"
+echo -e "Please type ${BLUE}${BOLD}exit${RESET} to finish."
+echo ""
