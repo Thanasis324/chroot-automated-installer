@@ -31,9 +31,9 @@ Open Termux and download the latest version of the installer using `git`:
 curl -sL https://raw.githubusercontent.com/Thanasis324/chroot-automated-installer/main/install.sh | bash
 ```
 
-After the installation finishes, simply type:
+After the installation finishes exit termux, simply type:
 ```bash
-autochroot setup
+exit
 ```
 
 #### Step 2: Run the Installer
