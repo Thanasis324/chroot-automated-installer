@@ -8,7 +8,7 @@ An automated, touch-optimized, and graphically appealing installation script for
 
 - **Debian**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
 - **Fedora**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
-- **Arch Linux**: 🟡 Planned for a future update. The core architecture is implemented, but the package stack is currently under testing.
+- **Arch Linux**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
 
 ---
 
@@ -142,4 +142,5 @@ If you are a developer or a power user tasked with debugging or extending this e
 *   **[Arc Theme](https://github.com/horst3180/arc-theme) & [Papirus Icons](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)**: For the sleek and beautiful dark mode desktop aesthetics.
 *   **[Onboard](https://launchpad.net/onboard)**: For the touch-optimized virtual keyboard that makes interacting with the desktop possible.
 *   **[Box64](https://box86.org/) & [FEX-Emu](https://fex-emu.com/)**: For their incredible x86 emulation technologies that make PC gaming possible on ARM devices.
+*   **[Magisk](https://topjohnwu.github.io/Magisk/) & [KernelSU](https://kernelsu.org/)**: For providing the essential root access necessary to utilize raw chroot performance on Android.
 *   **Linux Distributions**: Thanks to the **[Fedora](https://fedoraproject.org/)**, **[Debian](https://www.debian.org/)**, and **[Arch Linux](https://archlinux.org/)** projects for their robust operating systems.
