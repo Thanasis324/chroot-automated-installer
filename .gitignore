@@ -1,0 +1,2 @@
+# Ignore zip bundles to keep repository clones tiny
+*.zip

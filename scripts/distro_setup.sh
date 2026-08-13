@@ -105,20 +105,33 @@ elif [ "$DISTRO_NAME" = "archlinux" ]; then
 else
     export DEBIAN_FRONTEND=noninteractive
     
-    # Add official Debian experimental repo for latest Mesa drivers
-    echo "deb http://deb.debian.org/debian experimental main" > /etc/apt/sources.list.d/experimental.list
+    # Fix any broken package locks from previously interrupted installations
+    dpkg --configure -a 2>/dev/null || true
     
     apt-get update -y || true
     apt-get upgrade -y || true
 
-    DEB_DEPS=(sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-theme papirus-icon-theme fonts-noto fonts-dejavu libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgl1 mesa-utils vulkan-tools virgl-server libvirglrenderer1 libdisplay-info-dev chromium)
+    DEB_DEPS=(sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-theme papirus-icon-theme fonts-noto fonts-dejavu vulkan-tools virgl-server libvirglrenderer1 firefox-esr libdisplay-info-dev mesa-utils)
     
-    # Bulk install first for speed, fallback to sequential if a package is invalid
-    if ! apt-get install -y --no-install-recommends -t experimental "${DEB_DEPS[@]}"; then
-        echo -e "${YELLOW}Bulk installation failed. Retrying packages sequentially...${RESET}"
+    echo -e "${YELLOW}Installing core system packages...${RESET}"
+    if ! apt-get install -y --no-install-recommends "${DEB_DEPS[@]}"; then
+        echo -e "${YELLOW}Bulk core installation failed. Retrying sequentially...${RESET}"
         for dep in "${DEB_DEPS[@]}"; do
-            apt-get install -y --no-install-recommends -t experimental "$dep" || apt-get install -y --no-install-recommends "$dep" || echo -e "${RED}Skipped missing package: $dep${RESET}"
+            apt-get install -y --no-install-recommends "$dep" || echo -e "${RED}Skipped missing package: $dep${RESET}"
         done
+    fi
+
+    echo -e "${YELLOW}Downloading bleeding-edge Mesa drivers from GitHub...${RESET}"
+    cd /tmp
+    wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/download/v0.6/mesa-debs-trixie.zip || curl -sL -O https://github.com/Thanasis324/chroot-automated-installer/releases/download/v0.6/mesa-debs-trixie.zip
+    
+    if [ -f mesa-debs-trixie.zip ]; then
+        unzip -q mesa-debs-trixie.zip
+        echo -e "${YELLOW}Installing Mesa packages...${RESET}"
+        apt-get install -y --no-install-recommends ./mesa_debs/*.deb
+        rm -rf mesa-debs-trixie.zip mesa_debs
+    else
+        echo -e "${RED}[WARNING] Failed to download Mesa packages. Graphics performance may be degraded.${RESET}"
     fi
 fi
 fi
@@ -172,6 +185,7 @@ export PULSE_SERVER=tcp:127.0.0.1:4713
 export GDK_SCALE=1
 export QT_AUTO_SCREEN_SCALE_FACTOR=1
 export MOZ_ENABLE_WAYLAND=0
+export MOZ_USE_XINPUT2=1
 
 export XDG_RUNTIME_DIR=/tmp/runtime-$USER
 mkdir -p $XDG_RUNTIME_DIR
@@ -432,13 +446,12 @@ Categories=Utility;Accessibility;
 EOF
     chmod +x "$USER_HOME/Desktop/Onboard.desktop"
 
-    # Create first-run initialization script for Onboard settings (dconf/gsettings requires active DBus session)
     cat << 'EOF' > "$USER_HOME/.config/autostart/onboard-settings.desktop"
 [Desktop Entry]
 Type=Application
 Name=Onboard Settings Initializer
 Comment=Applies Onboard dark theme, auto-show, and floating icon on first boot
-Exec=bash -c "gsettings set org.onboard theme 'Nightshade' && gsettings set org.onboard.auto-show enabled true && gsettings set org.onboard.window docking-enabled true && gsettings set org.onboard.window docking-edge 'bottom' && gsettings set org.onboard.icon-palette in-use true && rm -f ~/.config/autostart/onboard-settings.desktop"
+Exec=bash -c "sleep 2 && gsettings set org.onboard theme 'Nightshade' && gsettings set org.onboard.auto-show enabled true && gsettings set org.onboard.window docking-enabled true && gsettings set org.onboard.window docking-edge 'bottom' && gsettings set org.onboard.window.landscape dock-expand true && gsettings set org.onboard.window.portrait dock-expand true && gsettings set org.onboard.icon-palette in-use true && rm -f ~/.config/autostart/onboard-settings.desktop"
 Terminal=false
 Categories=Utility;
 X-GNOME-Autostart-enabled=true
@@ -464,9 +477,9 @@ mkdir -p "$USER_HOME/.config/gtk-3.0"
 cat << 'EOF' > "$USER_HOME/.config/gtk-3.0/gtk.css"
 /* Touch optimized scrollbars and control targets */
 scrollbar slider {
-    min-width: 16px;
-    min-height: 16px;
-    border-radius: 8px;
+    min-width: 20px;
+    min-height: 20px;
+    border-radius: 10px;
 }
 button {
     min-height: 36px;

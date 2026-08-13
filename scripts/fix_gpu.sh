@@ -228,9 +228,8 @@ case "$driver_choice" in
             elif command -v apt-get >/dev/null 2>&1; then
                 echo "Running apt-get install..."
                 rm -f /etc/apt/sources.list.d/gfx-ci.list
-                echo "deb http://deb.debian.org/debian experimental main" > /etc/apt/sources.list.d/experimental.list
                 apt-get update >/dev/null 2>&1
-                apt-get install -y -t experimental libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 xfce4 xfwm4 libdisplay-info-dev >/dev/null 2>&1 || true
+                apt-get install -y libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 xfce4 xfwm4 libdisplay-info-dev >/dev/null 2>&1 || true
             elif command -v pacman >/dev/null 2>&1; then
                 pacman -Sy --noconfirm vulkan-freedreno vulkan-swrast vulkan-mesa-layers vulkan-icd-loader xfce4 xfwm4 libdisplay-info >/dev/null 2>&1 || true
             fi
