@@ -10,10 +10,21 @@ WHITE="\033[37m"
 RED="\033[31m"
 RESET="\033[0m"
 
+REQUESTED_TAG=""
+
 # --- Secret Dev Utility Mode ---
 if [ "$1" == "-d" ]; then
     echo -e "${CYAN}${BOLD}=== Developer Release Mode ===${RESET}"
-    REPO_DIR="/data/data/com.termux/files/home/chroot-automated-installer"
+    PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
+    REPO_DIR="$PREFIX_ROOT/Chroot-Automated-Installer"
+
+    if [ ! -d "$REPO_DIR/.git" ]; then
+        echo -e "${RED}[ERROR] Managed Autochroot repository not found at $REPO_DIR.${RESET}"
+        echo -e "Run the installer first so ${WHITE}autochroot update -d${RESET} uses the hidden installation copy."
+        exit 1
+    fi
+
+    echo -e "${CYAN}Using managed repository: $REPO_DIR${RESET}"
     echo -e "What would you like to do?"
     echo -e "  ${WHITE}1)${RESET} Commit only (push changes to main)"
     echo -e "  ${WHITE}2)${RESET} Release only (create tag and GitHub release)"
@@ -70,8 +81,7 @@ if [ "$1" == "-d" ]; then
         ZIP_NAME="Chroot.Automated.Script.zip"
         echo -e "${YELLOW}Bundling files into $ZIP_NAME...${RESET}"
         rm -f "$ZIP_NAME"
-        FILES_TO_ZIP="start-chroot.sh setup.sh install.sh scripts/"
-        [ -f "config.sh" ] && FILES_TO_ZIP="config.sh $FILES_TO_ZIP"
+        FILES_TO_ZIP="start-chroot.sh setup.sh install.sh configure.sh scripts/"
         zip -r "$ZIP_NAME" $FILES_TO_ZIP
         
         echo -e "${YELLOW}Pushing release tag to GitHub...${RESET}"
@@ -95,6 +105,22 @@ if [ "$1" == "-d" ]; then
 fi
 # -------------------------------
 
+while getopts ":t:" opt; do
+    case "$opt" in
+        t) REQUESTED_TAG="$OPTARG" ;;
+        *)
+            echo -e "${RED}Usage: autochroot update [-t release-tag]${RESET}"
+            exit 1
+            ;;
+    esac
+done
+shift $((OPTIND - 1))
+
+if [ -n "$REQUESTED_TAG" ] && [[ ! "$REQUESTED_TAG" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    echo -e "${RED}Invalid release tag. Use only letters, numbers, dots, underscores, or hyphens.${RESET}"
+    exit 1
+fi
+
 echo -e "${CYAN}${BOLD}========================================${RESET}"
 echo -e "${CYAN}${BOLD}       Autochroot Update Utility        ${RESET}"
 echo -e "${CYAN}${BOLD}========================================${RESET}"
@@ -116,9 +142,52 @@ update_termux() {
 }
 
 update_autochroot() {
-    echo -e "${YELLOW}Updating Autochroot from GitHub...${RESET}"
-    curl -sL https://raw.githubusercontent.com/Thanasis324/chroot-automated-installer/main/install.sh | bash
-    # install.sh might exit the script, so keep this last
+    local release_name="${REQUESTED_TAG:-latest}"
+    local release_url
+    local temp_root="$HOME/tmp"
+    local update_dir="$temp_root/autochroot-update-$release_name"
+    local archive="$temp_root/Chroot.Automated.Script.zip"
+
+    if [ "$release_name" = "latest" ]; then
+        release_url="https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/Chroot.Automated.Script.zip"
+    else
+        release_url="https://github.com/Thanasis324/chroot-automated-installer/releases/download/$release_name/Chroot.Automated.Script.zip"
+    fi
+
+    echo -e "${YELLOW}Downloading Autochroot release: $release_name...${RESET}"
+    if ! command -v curl &> /dev/null || ! command -v unzip &> /dev/null; then
+        echo -e "${YELLOW}Installing required update tools...${RESET}"
+        pkg install -y curl unzip
+    fi
+
+    mkdir -p "$temp_root"
+    rm -rf "$update_dir"
+
+    if ! curl -fL --retry 3 "$release_url" -o "$archive"; then
+        echo -e "${RED}Failed to download release '$release_name'. Check that the tag and release asset exist.${RESET}"
+        exit 1
+    fi
+
+    if ! unzip -tq "$archive" > /dev/null; then
+        echo -e "${RED}Downloaded release archive is invalid. Update cancelled.${RESET}"
+        exit 1
+    fi
+
+    mkdir -p "$update_dir"
+    unzip -q "$archive" -d "$update_dir"
+    if [ ! -f "$update_dir/install.sh" ]; then
+        echo -e "${RED}Release archive does not contain install.sh. Update cancelled.${RESET}"
+        exit 1
+    fi
+
+    echo -e "${YELLOW}Installing release $release_name...${RESET}"
+    (
+        cd "$update_dir"
+        AUTOCHROOT_SKIP_VISIBLE_CLEANUP=1 bash ./install.sh --local
+    )
+
+    rm -rf "$update_dir" "$archive"
+    echo -e "${GREEN}Autochroot updated successfully from release $release_name.${RESET}"
 }
 
 case "$choice" in

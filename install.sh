@@ -23,7 +23,9 @@ if [ "$1" = "-l" ] || [ "$1" = "--local" ]; then
     echo -e "${YELLOW}Local mode enabled. Skipping GitHub download...${RESET}"
 fi
 
-REPO_DIR="$HOME/chroot-automated-installer"
+VISIBLE_REPO_DIR="$HOME/chroot-automated-installer"
+PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
+REPO_DIR="$PREFIX_ROOT/Chroot-Automated-Installer"
 
 if [ "$LOCAL_INSTALL" -eq 0 ]; then
     if [ -d "$REPO_DIR/.git" ]; then
@@ -31,17 +33,32 @@ if [ "$LOCAL_INSTALL" -eq 0 ]; then
         cd "$REPO_DIR"
         git pull origin main || true
     else
-        if [ -d "$REPO_DIR" ]; then
-            echo -e "${YELLOW}Existing standard installation found. Removing old version...${RESET}"
-            rm -rf "$REPO_DIR"
+        if [ -d "$VISIBLE_REPO_DIR/.git" ]; then
+            echo -e "${YELLOW}Using the existing Home-folder copy as the installation source...${RESET}"
+            cd "$VISIBLE_REPO_DIR"
+            git pull origin main || true
+        else
+            if [ -d "$VISIBLE_REPO_DIR" ]; then
+                echo -e "${YELLOW}Existing standard Home-folder copy found. Refreshing it...${RESET}"
+                rm -rf "$VISIBLE_REPO_DIR"
+            fi
+            echo -e "${YELLOW}Downloading latest release...${RESET}"
+            cd "$HOME"
+            wget -q https://github.com/Thanasis324/chroot-automated-installer/archive/refs/heads/main.zip -O installer.zip
+            unzip -q installer.zip
+            mv chroot-automated-installer-main chroot-automated-installer
+            rm installer.zip
         fi
-        echo -e "${YELLOW}Downloading latest release...${RESET}"
-        cd "$HOME"
-        wget -q https://github.com/Thanasis324/chroot-automated-installer/archive/refs/heads/main.zip -O installer.zip
-        unzip -q installer.zip
-        mv chroot-automated-installer-main chroot-automated-installer
-        rm installer.zip
     fi
+elif [ "$PWD" != "$REPO_DIR" ]; then
+    VISIBLE_REPO_DIR="$PWD"
+fi
+
+if [ "$PWD" != "$REPO_DIR" ]; then
+    echo -e "${YELLOW}Installing Autochroot files in $REPO_DIR...${RESET}"
+    rm -rf "$REPO_DIR"
+    mkdir -p "$PREFIX_ROOT"
+    cp -a "$PWD" "$REPO_DIR"
 fi
 
 echo -e "${YELLOW}Setting permissions...${RESET}"
@@ -49,12 +66,12 @@ cd "$REPO_DIR"
 chmod +x setup.sh start-chroot.sh configure.sh scripts/*.sh 2>/dev/null || true
 
 echo -e "${YELLOW}Generating global 'autochroot' command...${RESET}"
-PREFIX_BIN="${PREFIX:-/data/data/com.termux/files/usr}/bin"
+PREFIX_BIN="$PREFIX_ROOT/bin"
 
 # Write the global wrapper script
 cat << 'EOF' > "$PREFIX_BIN/autochroot"
 #!/usr/bin/env bash
-REPO_DIR="$HOME/chroot-automated-installer"
+REPO_DIR="${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer"
 
 show_help() {
     echo -e "\033[1m\033[36m========================================\033[0m"
@@ -124,5 +141,20 @@ EOF
 
 echo ""
 echo -e "${GREEN}${BOLD}✓ Installation Complete!${RESET}"
+if [ "${AUTOCHROOT_SKIP_VISIBLE_CLEANUP:-0}" != "1" ] && [ -d "$VISIBLE_REPO_DIR" ] && [ "$(cd "$VISIBLE_REPO_DIR" && pwd)" != "$REPO_DIR" ]; then
+    echo ""
+    echo -e "${YELLOW}A visible source copy remains at:${RESET} $VISIBLE_REPO_DIR"
+    read -rp "Delete this Home-folder copy now? [y/N]: " DELETE_VISIBLE_COPY
+    case "${DELETE_VISIBLE_COPY,,}" in
+        y|yes)
+            cd "$HOME"
+            rm -rf "$VISIBLE_REPO_DIR"
+            echo -e "${GREEN}Removed the visible Home-folder copy. Autochroot remains installed at $REPO_DIR.${RESET}"
+            ;;
+        *)
+            echo -e "${CYAN}Keeping the visible copy. Autochroot uses $REPO_DIR.${RESET}"
+            ;;
+    esac
+fi
 echo -e "Please type ${BLUE}${BOLD}exit${RESET} to finish."
 echo ""

@@ -36,6 +36,10 @@ After the installation finishes exit termux, simply type:
 exit
 ```
 
+Autochroot installs its managed files in `$PREFIX/Chroot-Automated-Installer`
+(`$PREFIX` is normally `/data/data/com.termux/files/usr`). At the end, it can
+optionally remove the visible `~/chroot-automated-installer` download folder.
+
 #### Step 2: Run the Installer
 Run the setup script directly as your standard Termux user (**Do NOT run with sudo!** The script intelligently elevates privileges automatically when needed):
 ```bash

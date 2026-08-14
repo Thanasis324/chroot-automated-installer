@@ -2,6 +2,7 @@
 set -e
 
 PREFIX_TMP="${PREFIX:-/data/data/com.termux/files/usr}/tmp"
+INSTALL_DIR="${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer"
 
 # Temporary directory for downloading
 mkdir -p "$PREFIX_TMP/mesa_debs"
@@ -41,7 +42,7 @@ done
 echo "Bundling into mesa-debs-trixie.zip..."
 cd "$PREFIX_TMP"
 zip -r mesa-debs-trixie.zip mesa_debs/*.deb
-mv mesa-debs-trixie.zip /data/data/com.termux/files/home/chroot-automated-installer/
+mv mesa-debs-trixie.zip "$INSTALL_DIR/"
 rm -rf "$PREFIX_TMP/mesa_debs"
 
-echo "Done! The zip file is ready at ~/chroot-automated-installer/mesa-debs-trixie.zip"
+echo "Done! The zip file is ready at $INSTALL_DIR/mesa-debs-trixie.zip"

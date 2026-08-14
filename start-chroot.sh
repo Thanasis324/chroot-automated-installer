@@ -69,8 +69,8 @@ if [ -z "$SCRIPT_DIR" ]; then SCRIPT_DIR="$PWD"; fi
 
 if [ -f "$SCRIPT_DIR/scripts/start_${SELECTED_DISTRO}.sh" ]; then
     exec bash "$SCRIPT_DIR/scripts/start_${SELECTED_DISTRO}.sh" "$@"
-elif [ -f "$HOME/chroot-automated-installer/scripts/start_${SELECTED_DISTRO}.sh" ]; then
-    exec bash "$HOME/chroot-automated-installer/scripts/start_${SELECTED_DISTRO}.sh" "$@"
+elif [ -f "${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer/scripts/start_${SELECTED_DISTRO}.sh" ]; then
+    exec bash "${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer/scripts/start_${SELECTED_DISTRO}.sh" "$@"
 else
     echo -e "${YELLOW}Error: Sub-script for ${SELECTED_DISTRO} not found at expected paths!${RESET}"
     exit 1
