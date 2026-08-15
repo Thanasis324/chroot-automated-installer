@@ -26,7 +26,7 @@ An automated, touch-optimized, and graphically appealing installation script for
 ### Installation Guide
 
 #### Step 1: Clone the Repository
-Open Termux and download the latest version of the installer using `git`:
+Open Termux and download the latest version of the installer using `curl | bash`:
 ```bash
 curl -sL https://raw.githubusercontent.com/Thanasis324/chroot-automated-installer/main/install.sh | bash
 ```
