@@ -16,35 +16,11 @@
 
 set -e
 
-# Guarantee Termux environment and binary paths are available under standard and root (tsu/su) contexts
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-TERMUX_HOME="${TERMUX_HOME:-/data/data/com.termux/files/home}"
-export PREFIX
-export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
-unset LD_PRELOAD 2>/dev/null || true
-
-# If running as root (elevated), immediately unlock Termux file permissions and fix SELinux
-if [ "${EUID:-1}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
-    chmod 755 /data/data/com.termux /data/data/com.termux/files /data/data/com.termux/files/usr /data/data/com.termux/files/usr/bin /data/data/com.termux/files/home 2>/dev/null || true
-    chmod -R 755 "$PREFIX/bin" 2>/dev/null || true
-    setenforce 0 2>/dev/null || true
-    chcon -R u:object_r:system_file:s0 "$PREFIX/bin" 2>/dev/null || true
-fi
-
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
-if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ] || [ ! -d "$SCRIPT_DIR/scripts" ]; then
-    if [ -d "${PREFIX}/Chroot-Automated-Installer/scripts" ]; then
-        SCRIPT_DIR="${PREFIX}/Chroot-Automated-Installer"
-    elif [ -d "$TERMUX_HOME/chroot-automated-installer/scripts" ]; then
-        SCRIPT_DIR="$TERMUX_HOME/chroot-automated-installer"
-    else
-        SCRIPT_DIR="$PWD"
-    fi
-fi
-mkdir -p "$SCRIPT_DIR/scripts" 2>/dev/null || true
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+mkdir -p "$SCRIPT_DIR/scripts"
 source "$SCRIPT_DIR/scripts/autochroot_state.sh" 2>/dev/null || true
 export SETUP_MODE="true"
-echo 'SETUP_MODE="true"' > "$SCRIPT_DIR/scripts/global_settings.sh" 2>/dev/null || true
+echo 'SETUP_MODE="true"' > "$SCRIPT_DIR/scripts/global_settings.sh"
 
 # --- Color Definitions ---
 BOLD="\033[1m"
@@ -57,25 +33,11 @@ PURPLE="\033[38;5;129m"
 CYAN="\033[38;5;51m"
 WHITE="\033[38;5;231m"
 
-# Dynamically resolve chroot-distro executable (Prioritize direct python3 module to prevent shebang bad interpreter)
-if [ -x "$PREFIX/bin/python3" ] && "$PREFIX/bin/python3" -m chroot_distro --help &>/dev/null 2>&1; then
-    DISTRO_CMD="$PREFIX/bin/python3 -m chroot_distro"
-elif python3 -m chroot_distro --help &>/dev/null 2>&1; then
-    DISTRO_CMD="python3 -m chroot_distro"
-elif command -v chroot-distro &>/dev/null; then
-    DISTRO_CMD="chroot-distro"
-elif [ -x "$PREFIX/bin/chroot-distro" ]; then
-    DISTRO_CMD="$PREFIX/bin/chroot-distro"
-elif [ -x "$TERMUX_HOME/.local/bin/chroot-distro" ]; then
-    DISTRO_CMD="$TERMUX_HOME/.local/bin/chroot-distro"
-else
-    DISTRO_CMD="python3 -m chroot_distro"
-fi
-export DISTRO_CMD
+DISTRO_CMD="chroot-distro"
 
 # --- Helper Functions ---
 print_banner() {
-    clear 2>/dev/null || printf '\033[2J\033[H'
+    clear
     echo -e "${CYAN}${BOLD}"
     echo "================================================================================"
     echo "       _   _   _ _____ ___   ____ _   _ ____   ___   ___ _____                  "
@@ -141,7 +103,7 @@ install_all_dependencies() {
 
     # Define a helper function to safely run pkg commands as the normal Termux user
     run_pkg() {
-        if [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
+        if [ "$(id -u)" -eq 0 ]; then
             # Find the actual Termux user (usually u0_aXXX)
             TERMUX_USER=$(stat -c "%U" /data/data/com.termux/files/home 2>/dev/null || stat -c "%U" /data/data/com.termux)
             if [ -n "$TERMUX_USER" ] && [ "$TERMUX_USER" != "root" ]; then
@@ -174,19 +136,24 @@ install_all_dependencies() {
             if ! run_pkg "pkg update -y"; then
                 echo ""
                 log_error "Failed to update package repositories!"
-                log_error "Please check your internet connection or run 'termux-change-repo' to select a working mirror."
+                log_error "Please check your internet connection and try again."
                 echo ""
                 exit 1
             fi
         fi
     fi
 
+    # Allow user to select the fastest mirror for subsequent downloads
+    log_info "Launching Termux Repo Manager (Select the fastest mirror for your region)..."
+    run_pkg "termux-change-repo" || true
+
     log_info "Enabling required repositories (root-repo, x11-repo, tur-repo)..."
     run_pkg "pkg install -y root-repo x11-repo tur-repo 2>/dev/null" || true
 
-    log_info "Installing Python, pip, tsu & core utilities..."
+    log_info "Installing Python, pip, sudo, tsu & core utilities..."
     DEPS=(
         "python"
+        "sudo"
         "tsu"
         "pulseaudio"
         "termux-x11-nightly"
@@ -241,11 +208,6 @@ install_all_dependencies() {
 
     PREFIX_BIN="${PREFIX:-/data/data/com.termux/files/usr}/bin"
     export PATH="$PATH:$HOME/.local/bin:$PREFIX_BIN:/system/bin"
-    
-    # Fix shebangs and ensure world execute permissions on Python, pip, and chroot-distro binaries
-    termux-fix-shebang "$PREFIX_BIN/chroot-distro" "$HOME/.local/bin/chroot-distro" 2>/dev/null || true
-    chmod 755 "$PREFIX_BIN/python"* "$PREFIX_BIN/pip"* "$PREFIX_BIN/chroot-distro"* 2>/dev/null || true
-    chmod -R 755 "$PREFIX_BIN" 2>/dev/null || true
 
         log_success "All Termux dependencies installed successfully."
     else
@@ -258,96 +220,38 @@ check_and_elevate_root() {
     log_section "Step 2: Verifying Root Privileges & Elevation"
     
     # 1. Check if currently running as root (UID 0)
-    if [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
+    if [ "$(id -u)" -eq 0 ]; then
         log_success "Script is running with root privileges (UID 0)."
         IS_ROOT=true
         export IS_ROOT
         return 0
     fi
 
-    # 2. Persist state to secure transport file in Termux home to prevent mksh / su command line truncation on Android 7
-    STATE_FILE="${TERMUX_HOME:-/data/data/com.termux/files/home}/.autochroot_setup_state.env"
-    rm -f "$STATE_FILE" 2>/dev/null || true
-    cat <<EOF > "$STATE_FILE"
-PREFIX="$PREFIX"
-TERMUX_HOME="$TERMUX_HOME"
-CALLER_PWD="$CALLER_PWD"
-SELECTED_DISTRO="$SELECTED_DISTRO"
-DISTRO_FAMILY="$DISTRO_FAMILY"
-USERNAME="$USERNAME"
-PASSWORD="$PASSWORD"
-SUDO_CHOICE="$SUDO_CHOICE"
-CUSTOM_SETUP_MODE="$CUSTOM_SETUP_MODE"
-IS_CUSTOM_ROOTFS="$IS_CUSTOM_ROOTFS"
-IS_CUSTOM_MODE="$IS_CUSTOM_MODE"
-CUSTOM_ARCHIVE="$CUSTOM_ARCHIVE"
-EOF
-    chmod 666 "$STATE_FILE" 2>/dev/null || true
-    mkdir -p "${PREFIX}/var/lib/autochroot" 2>/dev/null || true
-    cp -f "$STATE_FILE" "${PREFIX}/var/lib/autochroot/setup_state.env" 2>/dev/null || true
-    chmod 666 "${PREFIX}/var/lib/autochroot/setup_state.env" 2>/dev/null || true
+    log_warn "Script is currently running as non-root user (UID $(id -u))."
 
-    log_info "Attempting root elevation via su / tsu..."
+    # 2. Attempt root elevation cleanly without process crash
+    log_info "Attempting root elevation via installed sudo / tsu..."
     export CALLER_PWD="${CALLER_PWD:-$PWD}"
-    SCRIPT_PATH="$SCRIPT_DIR/setup.sh"
-    [ ! -f "$SCRIPT_PATH" ] && SCRIPT_PATH="$PWD/setup.sh"
     
-    chmod 755 /data/data/com.termux /data/data/com.termux/files /data/data/com.termux/files/usr /data/data/com.termux/files/usr/bin /data/data/com.termux/files/home 2>/dev/null || true
-    chmod -R 755 "$SCRIPT_DIR" 2>/dev/null || true
-    chmod -R 755 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
-
-    BASH_BIN="${PREFIX}/bin/bash"
-    [ ! -x "$BASH_BIN" ] && BASH_BIN="$(command -v bash 2>/dev/null || echo "/data/data/com.termux/files/usr/bin/bash")"
-    RUN_CMD="$BASH_BIN '$SCRIPT_PATH' --elevated"
-
     set +e
-    # Strategy 1: Magisk Mount Master mode (critical for Android 7 / custom ROMs with isolated namespaces)
-    if command -v su &>/dev/null; then
-        su --mount-master -c "$RUN_CMD" 2>/dev/null
-        ELEV_STATUS=$?
-        if [ $ELEV_STATUS -eq 0 ]; then
-            exit 0
-        fi
-
-        su -mm -c "$RUN_CMD" 2>/dev/null
-        ELEV_STATUS=$?
-        if [ $ELEV_STATUS -eq 0 ]; then
-            exit 0
-        fi
-
-        # Strategy 2: Direct su -c
-        su -c "$RUN_CMD"
-        ELEV_STATUS=$?
-        if [ $ELEV_STATUS -eq 0 ]; then
-            exit 0
-        fi
-        
-        # Strategy 3: su 0 -c
-        su 0 -c "$RUN_CMD" 2>/dev/null
+    if command -v sudo &>/dev/null; then
+        sudo CALLER_PWD="$CALLER_PWD" bash "$0" --elevated "$@"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
         fi
     fi
 
-    # Strategy 4: tsu
     if command -v tsu &>/dev/null; then
-        tsu -c "$RUN_CMD" 2>/dev/null
+        tsu bash "$0" --elevated "$@"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
         fi
     fi
 
-    # Strategy 5: Explicit system binary fallback
-    if [ -x /system/bin/su ]; then
-        /system/bin/su -c "$RUN_CMD" 2>/dev/null
-        ELEV_STATUS=$?
-        if [ $ELEV_STATUS -eq 0 ]; then
-            exit 0
-        fi
-    elif [ -x /system/xbin/su ]; then
-        /system/xbin/su -c "$RUN_CMD" 2>/dev/null
+    if command -v su &>/dev/null; then
+        su -c "CALLER_PWD='$CALLER_PWD' bash \"$0\" --elevated \"$@\"" 2>/dev/null
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
@@ -364,10 +268,13 @@ EOF
     echo "================================================================================"
     echo -e "${WHITE}Please choose one of the following options to proceed:${RESET}"
     echo ""
-    echo -e "${CYAN}Option 1:${RESET} Grant Termux root permissions in your Root Manager:"
+    echo -e "${CYAN}Option 1:${RESET} Run the script manually using sudo:"
+    echo -e "          ${GREEN}sudo ./setup.sh${RESET}"
+    echo ""
+    echo -e "${CYAN}Option 2:${RESET} Add / grant Termux root permissions in your Root Manager application:"
     echo -e "          ${WHITE}(Magisk, KernelSU, APatch, or SuperSU)${RESET}"
     echo ""
-    echo -e "${CYAN}Option 2:${RESET} Root your Android device if it is not currently rooted."
+    echo -e "${CYAN}Option 3:${RESET} Root your Android device if it is not currently rooted."
     echo -e "${YELLOW}${BOLD}================================================================================"
     echo -e "${RESET}"
     exit 1
@@ -688,6 +595,7 @@ configure_chroot_system() {
 
     log_section "Step 6: Configuring ${SELECTED_DISTRO^^} Chroot (User, Sudo, Audio, X11, Touch DE, Drivers)"
     
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     DISTRO_SETUP_SCRIPT="$SCRIPT_DIR/scripts/distro_setup.sh"
 
     if [ ! -f "$DISTRO_SETUP_SCRIPT" ]; then
@@ -721,6 +629,7 @@ configure_chroot_system() {
 setup_launchers() {
     log_section "Step 7: Setting up Launcher Scripts & Audio/X11 Configuration"
 
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     START_SCRIPT="$SCRIPT_DIR/start-chroot.sh"
     
     if [ ! -f "$START_SCRIPT" ]; then
@@ -812,15 +721,13 @@ verify_and_finish() {
 
 # --- Automatic De-elevation & Permission Restoration ---
 restore_user_permissions() {
-    if [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
+    if [ "$(id -u)" -eq 0 ]; then
         local termux_user
         termux_user=$(stat -c "%U" /data/data/com.termux/files/home 2>/dev/null || stat -c "%U" /data/data/com.termux 2>/dev/null || echo "")
         if [ -n "$termux_user" ] && [ "$termux_user" != "root" ]; then
-            chown -R "$termux_user:$termux_user" /data/data/com.termux/files/home/.chroot_distro* /data/data/com.termux/files/home/.*_user /data/data/com.termux/files/home/custom.tar.gz /data/data/com.termux/files/home/.autochroot* 2>/dev/null || true
+            chown -R "$termux_user:$termux_user" /data/data/com.termux/files/home/.chroot_distro* /data/data/com.termux/files/home/.*_user /data/data/com.termux/files/home/custom.tar.gz 2>/dev/null || true
             chown -R "$termux_user:$termux_user" "${PREFIX:-/data/data/com.termux/files/usr}/var/lib/autochroot" 2>/dev/null || true
         fi
-        chmod 777 "${PREFIX:-/data/data/com.termux/files/usr}/var/lib/autochroot" 2>/dev/null || true
-        chmod 666 /data/data/com.termux/files/home/.chroot_distro* /data/data/com.termux/files/home/.*_user /data/data/com.termux/files/home/.autochroot* 2>/dev/null || true
     fi
 }
 trap restore_user_permissions EXIT
@@ -837,54 +744,28 @@ main() {
     export IS_CUSTOM_MODE
 
     if [ "$1" == "--elevated" ]; then
-        # We are on the elevated pass (running as root)
+        # We are on the second pass (elevated to root). Skip deps.
         shift # remove --elevated from args
-
-        # Load persisted configuration state
-        STATE_FILE="${TERMUX_HOME:-/data/data/com.termux/files/home}/.autochroot_setup_state.env"
-        FALLBACK_STATE="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/autochroot/setup_state.env"
-        if [ -f "$STATE_FILE" ]; then
-            source "$STATE_FILE" 2>/dev/null || true
-        elif [ -f "$FALLBACK_STATE" ]; then
-            source "$FALLBACK_STATE" 2>/dev/null || true
-        fi
-
-        # Immediate root permission unlock & SELinux permissive
-        chmod 755 /data/data/com.termux /data/data/com.termux/files /data/data/com.termux/files/usr /data/data/com.termux/files/usr/bin /data/data/com.termux/files/home 2>/dev/null || true
-        chmod -R 755 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
-        setenforce 0 2>/dev/null || true
-        chcon -R u:object_r:system_file:s0 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
-
-        if [ -z "$SELECTED_DISTRO" ]; then
-            get_distro_selection
-        fi
-        if [ -z "$USERNAME" ]; then
-            get_user_credentials
-        fi
-        install_chroot_distro
-        configure_chroot_system
-        setup_launchers
-        verify_and_finish
-        rm -f "$STATE_FILE" "$FALLBACK_STATE" 2>/dev/null || true
-        exit 0
-    elif [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
-        # Running directly with root privileges
-        print_banner
-        install_all_dependencies
         get_distro_selection
         get_user_credentials
         install_chroot_distro
+        # GPU driver configuration is handled externally at the end
         configure_chroot_system
         setup_launchers
         verify_and_finish
+        # Cleanly exit root subshell to return to the non-root terminal session
         exit 0
     else
-        # Running as standard Termux non-root user
+        # First pass (normal user)
+        if [ "$(id -u)" -eq 0 ]; then
+            echo -e "${RED}${BOLD}[ERROR] Please run this script WITHOUT sudo!${RESET}"
+            echo -e "${WHITE}The script will automatically install Termux packages and then ask for root privileges when needed.${RESET}"
+            exit 1
+        fi
         print_banner
         install_all_dependencies
-        get_distro_selection
-        get_user_credentials
         check_and_elevate_root "$@"
+        # Return cleanly to the caller's standard user prompt
         exit 0
     fi
 }

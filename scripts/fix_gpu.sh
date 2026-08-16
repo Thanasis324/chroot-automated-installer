@@ -40,33 +40,15 @@ print_divider() {
     echo -e "${YELLOW}${BOLD}${divider}${RESET}"
 }
 
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-TERMUX_HOME="${TERMUX_HOME:-/data/data/com.termux/files/home}"
-export PREFIX
-export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
-unset LD_PRELOAD 2>/dev/null || true
-
-# Dynamically resolve chroot-distro executable (Prioritize direct python3 module to prevent shebang bad interpreter)
-if [ -x "$PREFIX/bin/python3" ] && "$PREFIX/bin/python3" -m chroot_distro --help &>/dev/null 2>&1; then
-    DISTRO_CMD="$PREFIX/bin/python3 -m chroot_distro"
-elif python3 -m chroot_distro --help &>/dev/null 2>&1; then
-    DISTRO_CMD="python3 -m chroot_distro"
-elif command -v chroot-distro &>/dev/null; then
+if command -v chroot-distro &> /dev/null; then
     DISTRO_CMD="chroot-distro"
-elif [ -x "$PREFIX/bin/chroot-distro" ]; then
-    DISTRO_CMD="$PREFIX/bin/chroot-distro"
-elif [ -x "$TERMUX_HOME/.local/bin/chroot-distro" ]; then
-    DISTRO_CMD="$TERMUX_HOME/.local/bin/chroot-distro"
 else
-    DISTRO_CMD="python3 -m chroot_distro"
+    echo -e "${RED}[ERROR] chroot-distro is not installed. Please run setup.sh first.${RESET}"
+    exit 1
 fi
-export DISTRO_CMD
 
 SELECTED_DISTRO="$1"
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
-if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ]; then
-    SCRIPT_DIR="${PREFIX}/Chroot-Automated-Installer/scripts"
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
 
 # If no distro was passed as an argument, auto-detect installed distros
@@ -404,26 +386,22 @@ case "$driver_choice" in
     3)
         log_info "Configuring environment for VirGL (Mali/PowerVR/Exynos/Tensor)..."
         $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
-            # Purge any stale Vulkan/Zink variables
-            sed -i '/export VK_ICD_FILENAMES/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export ZINK_/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export MESA_LOADER_DRIVER_OVERRIDE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export LIBGL_ALWAYS_SOFTWARE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-
-            if ! grep -q 'GALLIUM_DRIVER=virpipe' /etc/profile.d/termux_env.sh 2>/dev/null; then
-                sed -i 's/GALLIUM_DRIVER=.*/GALLIUM_DRIVER=virpipe/g' /etc/profile.d/termux_env.sh 2>/dev/null || echo 'export GALLIUM_DRIVER=virpipe' >> /etc/profile.d/termux_env.sh
+            if ! grep -q 'GALLIUM_DRIVER' /etc/profile.d/termux_env.sh 2>/dev/null; then
+                echo 'export GALLIUM_DRIVER=virpipe' >> /etc/profile.d/termux_env.sh
+            else
+                sed -i 's/GALLIUM_DRIVER=.*/GALLIUM_DRIVER=virpipe/g' /etc/profile.d/termux_env.sh 2>/dev/null || true
             fi
+            if ! grep -q 'MESA_LOADER_DRIVER_OVERRIDE' /etc/profile.d/termux_env.sh 2>/dev/null; then
+                echo 'export MESA_LOADER_DRIVER_OVERRIDE=virgl' >> /etc/profile.d/termux_env.sh
+            else
+                sed -i 's/MESA_LOADER_DRIVER_OVERRIDE=.*/MESA_LOADER_DRIVER_OVERRIDE=virgl/g' /etc/profile.d/termux_env.sh 2>/dev/null || true
+            fi
+            sed -i '/export LIBGL_ALWAYS_SOFTWARE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
         "
         ;;
     4)
         log_info "Configuring environment for LLVMpipe (Software Rendering)..."
         $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
-            sed -i '/export VK_ICD_FILENAMES/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export ZINK_/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export TU_DEBUG/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export MESA_GL_VERSION_OVERRIDE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export MESA_GLES_VERSION_OVERRIDE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-
             if ! grep -q 'GALLIUM_DRIVER' /etc/profile.d/termux_env.sh 2>/dev/null; then
                 echo 'export GALLIUM_DRIVER=llvmpipe' >> /etc/profile.d/termux_env.sh
             else
@@ -442,9 +420,6 @@ case "$driver_choice" in
     5)
         log_warn "GL4ES is experimental. It will use VirGL as its desktop backend."
         $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
-            sed -i '/export VK_ICD_FILENAMES/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export ZINK_/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export TU_DEBUG/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
             sed -i '/export GALLIUM_DRIVER/d;/export MESA_LOADER_DRIVER_OVERRIDE/d;/export LIBGL_ALWAYS_SOFTWARE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
         "
         ;;
@@ -470,11 +445,6 @@ log_success "Graphics optimization complete!"
 print_divider
 print_centered "${YELLOW}${BOLD}Verifying Hardware Acceleration...${RESET}"
 
-PREFIX_TMP="${PREFIX:-/data/data/com.termux/files/usr}/tmp"
-export TMPDIR="$PREFIX_TMP"
-mkdir -p "$PREFIX_TMP/.X11-unix"
-chmod 1777 "$PREFIX_TMP/.X11-unix" 2>/dev/null || true
-
 # Start a headless, invisible test display server
 export DISPLAY=:99
 if command -v termux-x11 &> /dev/null; then
@@ -483,33 +453,8 @@ if command -v termux-x11 &> /dev/null; then
     sleep 2
 fi
 
-if [ "$driver_choice" = "3" ] || [ "$driver_choice" = "5" ]; then
-    rm -rf "$PREFIX_TMP/.virgl_test" 2>/dev/null || true
-    if ! pgrep -f virgl_test_server >/dev/null 2>&1; then
-        if command -v virgl_test_server_android >/dev/null 2>&1; then
-            virgl_test_server_android >/dev/null 2>&1 &
-        elif command -v virgl_test_server >/dev/null 2>&1; then
-            virgl_test_server --use-gles >/dev/null 2>&1 &
-        fi
-        for i in {1..20}; do
-            [ -e "$PREFIX_TMP/.virgl_test" ] && break
-            sleep 0.1
-        done
-    fi
-    $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
-        rm -rf /tmp/.virgl_test 2>/dev/null || true
-        touch /tmp/.virgl_test 2>/dev/null || true
-        chmod 777 /tmp/.virgl_test 2>/dev/null || true
-    " 2>/dev/null || true
-fi
-
-VERIFY_BINDS="--bind $PREFIX_TMP/.X11-unix:/tmp/.X11-unix"
-if [ "$driver_choice" = "3" ] || [ "$driver_choice" = "5" ]; then
-    VERIFY_BINDS="$VERIFY_BINDS --bind $PREFIX_TMP/.virgl_test:/tmp/.virgl_test"
-fi
-
 # Run glxinfo inside the container to test OpenGL/Vulkan acceleration
-$DISTRO_CMD login $SELECTED_DISTRO --user root $VERIFY_BINDS -- bash -c "
+$DISTRO_CMD login $SELECTED_DISTRO --user root --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix -- bash -c "
     if command -v glxinfo >/dev/null 2>&1; then
         export DISPLAY=:99
         TEST_CMD=\"glxinfo -B\"
@@ -518,7 +463,7 @@ $DISTRO_CMD login $SELECTED_DISTRO --user root $VERIFY_BINDS -- bash -c "
         elif [ \"$driver_choice\" = \"2\" ]; then
             TEST_CMD=\"GALLIUM_DRIVER=freedreno MESA_LOADER_DRIVER_OVERRIDE=freedreno glxinfo -B\"
         elif [ \"$driver_choice\" = \"3\" ]; then
-            TEST_CMD=\"GALLIUM_DRIVER=virpipe MESA_LOADER_DRIVER_OVERRIDE=virpipe glxinfo -B\"
+            TEST_CMD=\"GALLIUM_DRIVER=virpipe glxinfo -B\"
         fi
         
         GL_OUTPUT=\$(eval \"\$TEST_CMD\" 2>/dev/null || true)

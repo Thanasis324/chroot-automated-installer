@@ -10,16 +10,7 @@ GREEN="\033[38;5;46m"
 YELLOW="\033[38;5;226m"
 RESET="\033[0m"
 
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-TERMUX_HOME="${TERMUX_HOME:-/data/data/com.termux/files/home}"
-export PREFIX
-export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
-unset LD_PRELOAD 2>/dev/null || true
-
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
-if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ]; then
-    SCRIPT_DIR="${PREFIX}/Chroot-Automated-Installer/scripts"
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
 
 SELECTED_DISTRO="${AUTOCHROOT_SELECTED_DISTRO:-debian}"
@@ -35,21 +26,12 @@ case "$RENDERER" in
     *) RENDERER_DESC="$RENDERER" ;;
 esac
 
-# Dynamically resolve chroot-distro executable (Prioritize direct python3 module to prevent shebang bad interpreter)
-if [ -x "$PREFIX/bin/python3" ] && "$PREFIX/bin/python3" -m chroot_distro --help &>/dev/null 2>&1; then
-    DISTRO_CMD="$PREFIX/bin/python3 -m chroot_distro"
-elif python3 -m chroot_distro --help &>/dev/null 2>&1; then
-    DISTRO_CMD="python3 -m chroot_distro"
-elif command -v chroot-distro &>/dev/null; then
+if command -v chroot-distro &> /dev/null; then
     DISTRO_CMD="chroot-distro"
-elif [ -x "$PREFIX/bin/chroot-distro" ]; then
-    DISTRO_CMD="$PREFIX/bin/chroot-distro"
-elif [ -x "$TERMUX_HOME/.local/bin/chroot-distro" ]; then
-    DISTRO_CMD="$TERMUX_HOME/.local/bin/chroot-distro"
 else
-    DISTRO_CMD="python3 -m chroot_distro"
+    echo -e "${RED}[ERROR] chroot-distro is not installed. Please run setup.sh first.${RESET}"
+    exit 1
 fi
-export DISTRO_CMD
 
 # Ensure permissions on hardware GPU device nodes
 tsu -c "chmod 666 /dev/kgsl-3d0 /dev/dri/* /dev/mali* /dev/ion /dev/dma_heap/*" 2>/dev/null || \
@@ -85,10 +67,10 @@ while pgrep -f termux-x11 >/dev/null 2>&1 && [ $HALT_ATTEMPTS -lt $MAX_ATTEMPTS 
 done
 
 PREFIX_TMP="${PREFIX:-/data/data/com.termux/files/usr}/tmp"
-export TMPDIR="$PREFIX_TMP"
-mkdir -p "$PREFIX_TMP/.X11-unix"
-chmod 1777 "$PREFIX_TMP/.X11-unix" 2>/dev/null || true
+mkdir -p "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix
+chmod 1777 "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix 2>/dev/null || true
 rm -f "$PREFIX_TMP/.X0-lock" "$PREFIX_TMP/.X11-unix/X0-lock" "$PREFIX_TMP/.X11-unix/X0" 2>/dev/null || true
+rm -f /tmp/.X0-lock /tmp/.X11-unix/X0-lock /tmp/.X11-unix/X0 2>/dev/null || true
 
 echo -e "${CYAN}${BOLD}Launching Termux:X11 Android App...${RESET}"
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 2>/dev/null || true
@@ -97,17 +79,10 @@ sleep 1
 
 if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
     echo -e "${CYAN}${BOLD}Starting VirGL Rendering Server...${RESET}"
-    if ! pgrep -f "virgl_test_server" >/dev/null 2>&1; then
-        rm -rf "$PREFIX_TMP/.virgl_test" 2>/dev/null || true
-        if command -v virgl_test_server_android >/dev/null 2>&1; then
-            virgl_test_server_android >/dev/null 2>&1 &
-        elif command -v virgl_test_server >/dev/null 2>&1; then
-            virgl_test_server --use-gles >/dev/null 2>&1 &
+    if command -v virgl_test_server >/dev/null 2>&1; then
+        if ! pgrep -x virgl_test_server >/dev/null 2>&1; then
+            virgl_test_server --use-egl-surfaceless >/dev/null 2>&1 &
         fi
-        for i in {1..20}; do
-            [ -e "$PREFIX_TMP/.virgl_test" ] && break
-            sleep 0.1
-        done
     fi
 else
     echo -e "${CYAN}${BOLD}Active Graphics Backend:${RESET} ${GREEN}${RENDERER_DESC}${RESET}"
@@ -139,20 +114,13 @@ $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
     if [ -x /usr/local/bin/termux-udevd ] && ! pgrep -f termux-udevd >/dev/null 2>&1; then
         /usr/local/bin/termux-udevd >/dev/null 2>&1 &
     fi
-    rm -rf /tmp/.virgl_test 2>/dev/null || true
-    touch /tmp/.virgl_test 2>/dev/null || true
-    chmod 777 /tmp/.virgl_test 2>/dev/null || true
 "
 
 echo -e "${GREEN}${BOLD}Launching ${SELECTED_DISTRO^^} Touch Desktop session for user: ${YELLOW}$CHROOT_USER${GREEN}...${RESET}"
 echo ""
 
 if [ "$DISTRO_CMD" = "chroot-distro" ]; then
-    BIND_ARGS="--bind $PREFIX_TMP/.X11-unix:/tmp/.X11-unix"
-    if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
-        BIND_ARGS="$BIND_ARGS --bind $PREFIX_TMP/.virgl_test:/tmp/.virgl_test"
-    fi
-    CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER $BIND_ARGS -- bash -c"
+    CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix --bind /data/data/com.termux/files/usr/tmp/.virgl_test:/tmp/.virgl_test -- bash -c"
 else
     CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- shared-tmp -- bash -c"
 fi
@@ -170,16 +138,12 @@ $CMD_PREFIX "
     
     # Touch-friendly onboard keyboard settings are now applied via XFCE autostart
     
-    if command -v xfce4-session >/dev/null 2>&1; then
-        if command -v dbus-run-session >/dev/null 2>&1; then
-            dbus-run-session -- xfce4-session
-        elif command -v dbus-launch >/dev/null 2>&1; then
-            dbus-launch --exit-with-session xfce4-session
-        else
-            xfce4-session
-        fi
+    if command -v dbus-run-session >/dev/null 2>&1; then
+        dbus-run-session -- xfce4-session || dbus-run-session -- startxfce4
+    elif command -v dbus-launch >/dev/null 2>&1; then
+        dbus-launch --exit-with-session xfce4-session || dbus-launch --exit-with-session startxfce4
     else
-        startxfce4
+        xfce4-session || startxfce4
     fi
     
     # Clean up the background gamepad daemon when the desktop session ends

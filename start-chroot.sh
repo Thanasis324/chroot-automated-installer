@@ -9,40 +9,12 @@ CYAN="\033[38;5;51m"
 YELLOW="\033[38;5;226m"
 RESET="\033[0m"
 
-PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-TERMUX_HOME="${TERMUX_HOME:-/data/data/com.termux/files/home}"
-export PREFIX
-export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
-unset LD_PRELOAD 2>/dev/null || true
-
-PREFIX_VAR="${PREFIX}/var/lib"
-SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
-if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ] || [ ! -d "$SCRIPT_DIR/scripts" ]; then
-    if [ -d "${PREFIX}/Chroot-Automated-Installer/scripts" ]; then
-        SCRIPT_DIR="${PREFIX}/Chroot-Automated-Installer"
-    elif [ -d "$TERMUX_HOME/chroot-automated-installer/scripts" ]; then
-        SCRIPT_DIR="$TERMUX_HOME/chroot-automated-installer"
-    else
-        SCRIPT_DIR="$PWD"
-    fi
-fi
+PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
+export PATH="$PATH:$HOME/.local/bin:/data/data/com.termux/files/usr/bin"
+DISTRO_CMD="chroot-distro"
+INSTALLED_DISTROS=()
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 source "$SCRIPT_DIR/scripts/autochroot_state.sh" 2>/dev/null || true
-
-# Dynamically resolve chroot-distro executable (Prioritize direct python3 module to prevent shebang bad interpreter)
-if [ -x "$PREFIX/bin/python3" ] && "$PREFIX/bin/python3" -m chroot_distro --help &>/dev/null 2>&1; then
-    DISTRO_CMD="$PREFIX/bin/python3 -m chroot_distro"
-elif python3 -m chroot_distro --help &>/dev/null 2>&1; then
-    DISTRO_CMD="python3 -m chroot_distro"
-elif command -v chroot-distro &>/dev/null; then
-    DISTRO_CMD="chroot-distro"
-elif [ -x "$PREFIX/bin/chroot-distro" ]; then
-    DISTRO_CMD="$PREFIX/bin/chroot-distro"
-elif [ -x "$TERMUX_HOME/.local/bin/chroot-distro" ]; then
-    DISTRO_CMD="$TERMUX_HOME/.local/bin/chroot-distro"
-else
-    DISTRO_CMD="python3 -m chroot_distro"
-fi
-export DISTRO_CMD
 
 # Fast directory check instead of calling slow 'chroot-distro list'.
 while IFS= read -r d; do INSTALLED_DISTROS+=("$d"); done < <(autochroot_list_distros)
