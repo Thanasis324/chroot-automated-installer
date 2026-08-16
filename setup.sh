@@ -230,28 +230,44 @@ check_and_elevate_root() {
     log_warn "Script is currently running as non-root user (UID $(id -u))."
 
     # 2. Attempt root elevation cleanly without process crash
-    log_info "Attempting root elevation via installed sudo / tsu..."
+    log_info "Attempting root elevation via su / tsu..."
     export CALLER_PWD="${CALLER_PWD:-$PWD}"
-    
+    PREFIX_BIN="${PREFIX:-/data/data/com.termux/files/usr}/bin"
+    BASH_BIN="$PREFIX_BIN/bash"
+    [ ! -x "$BASH_BIN" ] && BASH_BIN="$(command -v bash 2>/dev/null || echo "bash")"
+    ELEV_CMD="export PATH='$PREFIX_BIN:\$PATH'; CALLER_PWD='$CALLER_PWD' '$BASH_BIN' '$SCRIPT_PATH' --elevated"
+    if [ -n "$*" ]; then
+        ELEV_CMD="$ELEV_CMD $*"
+    fi
+
     set +e
-    if command -v sudo &>/dev/null; then
-        sudo CALLER_PWD="$CALLER_PWD" bash "$0" --elevated "$@"
-        ELEV_STATUS=$?
-        if [ $ELEV_STATUS -eq 0 ]; then
-            exit 0
-        fi
-    fi
-
-    if command -v tsu &>/dev/null; then
-        tsu bash "$0" --elevated "$@"
-        ELEV_STATUS=$?
-        if [ $ELEV_STATUS -eq 0 ]; then
-            exit 0
-        fi
-    fi
-
+    # 1. Native su (Magisk, KernelSU, APatch, SuperSU)
     if command -v su &>/dev/null; then
-        su -c "CALLER_PWD='$CALLER_PWD' bash \"$0\" --elevated \"$@\"" 2>/dev/null
+        su -c "$ELEV_CMD"
+        ELEV_STATUS=$?
+        if [ $ELEV_STATUS -eq 0 ]; then
+            exit 0
+        fi
+
+        su 0 -c "$ELEV_CMD" 2>/dev/null
+        ELEV_STATUS=$?
+        if [ $ELEV_STATUS -eq 0 ]; then
+            exit 0
+        fi
+    fi
+
+    # 2. tsu (Official Termux root wrapper)
+    if command -v tsu &>/dev/null; then
+        tsu -c "$ELEV_CMD" 2>/dev/null || tsu bash "$SCRIPT_PATH" --elevated "$@"
+        ELEV_STATUS=$?
+        if [ $ELEV_STATUS -eq 0 ]; then
+            exit 0
+        fi
+    fi
+
+    # 3. sudo fallback
+    if command -v sudo &>/dev/null; then
+        sudo CALLER_PWD="$CALLER_PWD" bash "$SCRIPT_PATH" --elevated "$@"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0

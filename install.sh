@@ -17,49 +17,63 @@ echo -e "${CYAN}${BOLD}========================================${RESET}"
 echo -e "${YELLOW}Installing dependencies...${RESET}"
 pkg install wget unzip bash-completion -y > /dev/null 2>&1 || true
 
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
+[ -z "$SCRIPT_DIR" ] && SCRIPT_DIR="$PWD"
+
+PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
+PREFIX_BIN="$PREFIX_ROOT/bin"
+REPO_DIR="$PREFIX_ROOT/Chroot-Automated-Installer"
+VISIBLE_REPO_DIR="$HOME/chroot-automated-installer"
+
+mkdir -p "$PREFIX_ROOT" "$PREFIX_BIN" 2>/dev/null || true
+
 LOCAL_INSTALL=0
 if [ "$1" = "-l" ] || [ "$1" = "--local" ]; then
     LOCAL_INSTALL=1
     echo -e "${YELLOW}Local mode enabled. Skipping GitHub download...${RESET}"
 fi
 
-VISIBLE_REPO_DIR="$HOME/chroot-automated-installer"
-PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
-REPO_DIR="$PREFIX_ROOT/Chroot-Automated-Installer"
-
-if [ "$LOCAL_INSTALL" -eq 0 ]; then
-    if [ -d "$REPO_DIR/.git" ]; then
-        echo -e "${YELLOW}Existing Git repository found. Pulling latest changes...${RESET}"
-        cd "$REPO_DIR"
-        git pull origin main || true
+# Determine valid source directory
+SRC_DIR=""
+if [ "$LOCAL_INSTALL" -eq 1 ]; then
+    if [ -f "$SCRIPT_DIR/setup.sh" ] && [ -d "$SCRIPT_DIR/scripts" ]; then
+        SRC_DIR="$SCRIPT_DIR"
+    elif [ -f "$VISIBLE_REPO_DIR/setup.sh" ]; then
+        SRC_DIR="$VISIBLE_REPO_DIR"
     else
-        if [ -d "$VISIBLE_REPO_DIR/.git" ]; then
-            echo -e "${YELLOW}Using the existing Home-folder copy as the installation source...${RESET}"
-            cd "$VISIBLE_REPO_DIR"
-            git pull origin main || true
+        SRC_DIR="$PWD"
+    fi
+else
+    if [ -d "$VISIBLE_REPO_DIR/.git" ]; then
+        echo -e "${YELLOW}Using the existing Home-folder Git copy as installation source...${RESET}"
+        cd "$VISIBLE_REPO_DIR"
+        git pull origin main 2>/dev/null || true
+        SRC_DIR="$VISIBLE_REPO_DIR"
+    elif [ -f "$SCRIPT_DIR/setup.sh" ] && [ -d "$SCRIPT_DIR/scripts" ] && [ "$SCRIPT_DIR" != "$REPO_DIR" ]; then
+        SRC_DIR="$SCRIPT_DIR"
+    else
+        echo -e "${YELLOW}Downloading latest release from GitHub...${RESET}"
+        TEMP_DL="$HOME/tmp/autochroot_install_$$"
+        mkdir -p "$TEMP_DL"
+        if wget -q https://github.com/Thanasis324/chroot-automated-installer/archive/refs/heads/main.zip -O "$TEMP_DL/installer.zip"; then
+            unzip -q "$TEMP_DL/installer.zip" -d "$TEMP_DL"
+            SRC_DIR="$TEMP_DL/chroot-automated-installer-main"
         else
-            if [ -d "$VISIBLE_REPO_DIR" ]; then
-                echo -e "${YELLOW}Existing standard Home-folder copy found. Refreshing it...${RESET}"
-                rm -rf "$VISIBLE_REPO_DIR"
-            fi
-            echo -e "${YELLOW}Downloading latest release...${RESET}"
-            cd "$HOME"
-            wget -q https://github.com/Thanasis324/chroot-automated-installer/archive/refs/heads/main.zip -O installer.zip
-            unzip -q installer.zip
-            mv chroot-automated-installer-main chroot-automated-installer
-            rm installer.zip
+            echo -e "${RED}[ERROR] Failed to download Autochroot release archive!${RESET}"
+            exit 1
         fi
     fi
-elif [ "$PWD" != "$REPO_DIR" ]; then
-    VISIBLE_REPO_DIR="$PWD"
 fi
 
-if [ "$PWD" != "$REPO_DIR" ]; then
-    echo -e "${YELLOW}Installing Autochroot files in $REPO_DIR...${RESET}"
-    rm -rf "$REPO_DIR"
-    mkdir -p "$PREFIX_ROOT"
-    cp -a "$PWD" "$REPO_DIR"
+if [ -n "$SRC_DIR" ] && [ "$SRC_DIR" != "$REPO_DIR" ]; then
+    echo -e "${YELLOW}Installing Autochroot files to $REPO_DIR...${RESET}"
+    mkdir -p "$REPO_DIR"
+    cp -rf "$SRC_DIR"/* "$REPO_DIR"/ 2>/dev/null || cp -a "$SRC_DIR"/. "$REPO_DIR"/
+    cp -rf "$SRC_DIR"/.[!.]* "$REPO_DIR"/ 2>/dev/null || true
 fi
+
+# Cleanup temp download folder if used
+[ -n "$TEMP_DL" ] && rm -rf "$TEMP_DL" 2>/dev/null || true
 
 echo -e "${YELLOW}Setting permissions...${RESET}"
 cd "$REPO_DIR"
@@ -68,15 +82,23 @@ chmod +x setup.sh start-chroot.sh configure.sh scripts/*.sh 2>/dev/null || true
 echo -e "${YELLOW}Generating global 'autochroot' command...${RESET}"
 PREFIX_BIN="$PREFIX_ROOT/bin"
 
-# Write the global wrapper script
-cat << 'EOF' > "$PREFIX_BIN/autochroot"
-#!/usr/bin/env bash
-REPO_DIR="${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer"
+write_wrapper() {
+    local target_path="$1"
+    mkdir -p "$(dirname "$target_path")" 2>/dev/null || true
+    chmod u+w "$target_path" 2>/dev/null || true
+    rm -f "$target_path" 2>/dev/null || true
+    (
+        cat << EOF > "$target_path"
+#!$PREFIX_ROOT/bin/bash
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+export PREFIX
+export PATH="\$PREFIX/bin:\$HOME/.local/bin:\$HOME/bin:\$PATH:/system/bin:/system/xbin"
+REPO_DIR="\$PREFIX/Chroot-Automated-Installer"
 
 show_help() {
     echo -e "\033[1m\033[36m========================================\033[0m"
     echo -e "\033[1m\033[36m   Termux Automated Chroot (autochroot)  \033[0m"
-    echo -e "\033[1m\033[36m========================================\033[0m"
+    echo -e "\033[1m========================================\033[0m"
     echo -e "\033[1mUsage:\033[0m autochroot [flags] <command> [args...]"
     echo ""
     echo -e "\033[1mCommands:\033[0m"
@@ -93,43 +115,63 @@ show_help() {
     echo -e "\033[36m========================================\033[0m"
 }
 
-if [ "$1" = "-h" ] || [ -z "$1" ]; then
+if [ "\$1" = "-h" ] || [ -z "\$1" ]; then
     show_help
     exit 0
 fi
 
-if [ "$1" = "-m" ]; then
+if [ "\$1" = "-m" ]; then
     export AUTOCHROOT_MANUAL=1
     shift
 fi
 
-COMMAND="$1"
+COMMAND="\$1"
 shift
 
-case "$COMMAND" in
-    start) SCRIPT_PATH="$REPO_DIR/start-chroot.sh" ;;
-    config|configure) SCRIPT_PATH="$REPO_DIR/configure.sh" ;;
-    setup|install) SCRIPT_PATH="$REPO_DIR/setup.sh" ;;
-    update) SCRIPT_PATH="$REPO_DIR/scripts/update.sh" ;;
-    *) echo -e "\033[33mUnknown command: $COMMAND\033[0m"; show_help; exit 1 ;;
+case "\$COMMAND" in
+    start) SCRIPT_PATH="\$REPO_DIR/start-chroot.sh" ;;
+    config|configure) SCRIPT_PATH="\$REPO_DIR/configure.sh" ;;
+    setup|install) SCRIPT_PATH="\$REPO_DIR/setup.sh" ;;
+    update) SCRIPT_PATH="\$REPO_DIR/scripts/update.sh" ;;
+    *) echo -e "\033[33mUnknown command: \$COMMAND\033[0m"; show_help; exit 1 ;;
 esac
 
-if [ ! -f "$SCRIPT_PATH" ]; then
-    echo -e "\033[31mError: Could not find script at $SCRIPT_PATH\033[0m"
+if [ ! -f "\$SCRIPT_PATH" ]; then
+    echo -e "\033[31mError: Could not find script at \$SCRIPT_PATH\033[0m"
     exit 1
 fi
-exec bash "$SCRIPT_PATH" "$@"
+
+BASH_BIN="\$PREFIX/bin/bash"
+[ ! -x "\$BASH_BIN" ] && BASH_BIN="\$(command -v bash 2>/dev/null || echo "bash")"
+exec "\$BASH_BIN" "\$SCRIPT_PATH" "\$@"
 EOF
+    ) 2>/dev/null || return 1
+    chmod 755 "$target_path" 2>/dev/null || true
+    if command -v termux-fix-shebang &>/dev/null; then
+        termux-fix-shebang "$target_path" 2>/dev/null || true
+    fi
+    return 0
+}
 
-chmod +x "$PREFIX_BIN/autochroot" 2>/dev/null || true
+EXECUTABLE_PATH=""
+if write_wrapper "$PREFIX_BIN/autochroot"; then
+    ln -sf "$PREFIX_BIN/autochroot" "$PREFIX_BIN/startchroot" 2>/dev/null || true
+    ln -sf "$PREFIX_BIN/autochroot" "$PREFIX_BIN/start-chroot" 2>/dev/null || true
+    EXECUTABLE_PATH="$PREFIX_BIN/autochroot"
+fi
 
-# Compatibility links
-ln -sf "$PREFIX_BIN/autochroot" "$PREFIX_BIN/startchroot"
-ln -sf "$PREFIX_BIN/autochroot" "$PREFIX_BIN/start-chroot"
+for ubin in "$HOME/.local/bin" "$HOME/bin"; do
+    mkdir -p "$ubin" 2>/dev/null || true
+    if write_wrapper "$ubin/autochroot"; then
+        ln -sf "$ubin/autochroot" "$ubin/startchroot" 2>/dev/null || true
+        ln -sf "$ubin/autochroot" "$ubin/start-chroot" 2>/dev/null || true
+        [ -z "$EXECUTABLE_PATH" ] && EXECUTABLE_PATH="$ubin/autochroot"
+    fi
+done
 
 echo -e "${YELLOW}Setting up bash autocompletion...${RESET}"
 mkdir -p "$PREFIX/etc/bash_completion.d" 2>/dev/null || true
-cat << 'EOF' > "$PREFIX/etc/bash_completion.d/autochroot"
+cat << 'EOF' > "$PREFIX/etc/bash_completion.d/autochroot" 2>/dev/null || true
 _autochroot_completions() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
     local commands="start config setup install update -h -m -c"
@@ -143,7 +185,9 @@ rm -f "$HOME/installer.zip" 2>/dev/null || true
 rm -rf "$HOME/tmp/autochroot-update-"* "$HOME/tmp/Chroot.Automated.Script.zip" 2>/dev/null || true
 
 # Automatically run the help menu so the user sees the commands immediately
-"$PREFIX_BIN/autochroot" -h
+if [ -n "$EXECUTABLE_PATH" ] && [ -f "$EXECUTABLE_PATH" ]; then
+    "$PREFIX/bin/bash" "$EXECUTABLE_PATH" -h
+fi
 
 echo ""
 echo -e "${GREEN}${BOLD}✓ Installation Complete!${RESET}"
