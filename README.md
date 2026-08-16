@@ -9,6 +9,7 @@ An automated, touch-optimized, and graphically appealing installation script for
 - **Debian**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
 - **Fedora**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
 - **Arch Linux**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
+- **Custom Distro**: 🟡 Generally works, but is for more advanced users (supports importing custom `.tar.gz` rootfs archives with optional automated touch desktop & GPU configuration).
 
 ---
 
@@ -44,6 +45,8 @@ optionally remove the visible `~/chroot-automated-installer` download folder.
 Run the setup script directly as your standard Termux user (**Do NOT run with sudo!** The script intelligently elevates privileges automatically when needed):
 ```bash
 autochroot setup
+# Use 'autochroot setup -c' (or 'autochroot install -c') to install a custom rootfs (place custom.tar.gz in ~/):
+# autochroot setup -c
 ```
 
 #### Step 3: Interactive Setup & Mirror Selection
