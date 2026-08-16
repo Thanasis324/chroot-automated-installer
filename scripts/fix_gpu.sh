@@ -389,20 +389,11 @@ case "$driver_choice" in
             # Purge any stale Vulkan/Zink variables
             sed -i '/export VK_ICD_FILENAMES/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
             sed -i '/export ZINK_/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export TU_DEBUG/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export MESA_GL_VERSION_OVERRIDE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            sed -i '/export MESA_GLES_VERSION_OVERRIDE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
+            sed -i '/export MESA_LOADER_DRIVER_OVERRIDE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
             sed -i '/export LIBGL_ALWAYS_SOFTWARE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
 
-            if ! grep -q 'GALLIUM_DRIVER' /etc/profile.d/termux_env.sh 2>/dev/null; then
-                echo 'export GALLIUM_DRIVER=virpipe' >> /etc/profile.d/termux_env.sh
-            else
-                sed -i 's/GALLIUM_DRIVER=.*/GALLIUM_DRIVER=virpipe/g' /etc/profile.d/termux_env.sh 2>/dev/null || true
-            fi
-            if ! grep -q 'MESA_LOADER_DRIVER_OVERRIDE' /etc/profile.d/termux_env.sh 2>/dev/null; then
-                echo 'export MESA_LOADER_DRIVER_OVERRIDE=virpipe' >> /etc/profile.d/termux_env.sh
-            else
-                sed -i 's/MESA_LOADER_DRIVER_OVERRIDE=.*/MESA_LOADER_DRIVER_OVERRIDE=virpipe/g' /etc/profile.d/termux_env.sh 2>/dev/null || true
+            if ! grep -q 'GALLIUM_DRIVER=virpipe' /etc/profile.d/termux_env.sh 2>/dev/null; then
+                sed -i 's/GALLIUM_DRIVER=.*/GALLIUM_DRIVER=virpipe/g' /etc/profile.d/termux_env.sh 2>/dev/null || echo 'export GALLIUM_DRIVER=virpipe' >> /etc/profile.d/termux_env.sh
             fi
         "
         ;;
