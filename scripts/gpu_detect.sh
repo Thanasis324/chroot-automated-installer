@@ -82,7 +82,7 @@ detect_adreno_gpu() {
             elif [ "$MODEL_NUM" -ge 600 ]; then
                 ADRENO_SERIES="A6XX"
             else
-                ADRENO_SERIES="A6XX"
+                ADRENO_SERIES="A5XX"
             fi
         else
             ADRENO_SERIES="A8XX"

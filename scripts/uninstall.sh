@@ -44,14 +44,12 @@ else
     DISTRO_CMD=""
 fi
 
-PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
+
 INSTALLED_DISTROS=()
 if [ -n "$DISTRO_CMD" ]; then
-    for d in debian fedora archlinux; do
-        if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ]; then
-            INSTALLED_DISTROS+=("$d")
-        fi
-    done
+    while IFS= read -r d; do [ -n "$d" ] && INSTALLED_DISTROS+=("$d"); done < <(autochroot_list_distros)
 fi
 
 remove_distro() {
@@ -60,6 +58,7 @@ remove_distro() {
         log_info "Removing distribution: $target..."
         $DISTRO_CMD remove "$target" 2>/dev/null || true
         rm -f "$HOME/.${target}_user" 2>/dev/null || true
+        autochroot_remove_distro_state "$target" 2>/dev/null || true
         log_success "Successfully removed $target."
     else
         log_warn "chroot-distro not found. Cannot remove $target."
@@ -114,9 +113,10 @@ while true; do
             echo -e "${RED}Warning: This will delete ALL data inside your Linux containers!${RESET}"
             read -rp "Are you sure? [y/N]: " confirm
             if [[ "${confirm,,}" == "y"* ]]; then
-                for d in debian fedora archlinux; do
+                for d in "${INSTALLED_DISTROS[@]}"; do
                     remove_distro "$d"
                 done
+                INSTALLED_DISTROS=()
             fi
             ;;
         2)
@@ -135,11 +135,7 @@ while true; do
                         remove_distro "$target"
                         # Refresh installed distros array
                         INSTALLED_DISTROS=()
-                        for d in debian fedora archlinux; do
-                            if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ]; then
-                                INSTALLED_DISTROS+=("$d")
-                            fi
-                        done
+                        while IFS= read -r d; do [ -n "$d" ] && INSTALLED_DISTROS+=("$d"); done < <(autochroot_list_distros)
                     fi
                 else
                     log_warn "Invalid selection."

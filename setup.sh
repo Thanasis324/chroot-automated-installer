@@ -18,6 +18,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 mkdir -p "$SCRIPT_DIR/scripts"
+source "$SCRIPT_DIR/scripts/autochroot_state.sh" 2>/dev/null || true
 export SETUP_MODE="true"
 echo 'SETUP_MODE="true"' > "$SCRIPT_DIR/scripts/global_settings.sh"
 
@@ -230,10 +231,11 @@ check_and_elevate_root() {
 
     # 2. Attempt root elevation cleanly without process crash
     log_info "Attempting root elevation via installed sudo / tsu..."
+    export CALLER_PWD="${CALLER_PWD:-$PWD}"
     
     set +e
     if command -v sudo &>/dev/null; then
-        sudo bash "$0" --elevated "$@"
+        sudo CALLER_PWD="$CALLER_PWD" bash "$0" --elevated "$@"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
@@ -249,7 +251,7 @@ check_and_elevate_root() {
     fi
 
     if command -v su &>/dev/null; then
-        su -c "bash \"$0\" --elevated \"$@\"" 2>/dev/null
+        su -c "CALLER_PWD='$CALLER_PWD' bash \"$0\" --elevated \"$@\"" 2>/dev/null
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
@@ -278,8 +280,149 @@ check_and_elevate_root() {
     exit 1
 }
 
+# --- Custom Rootfs Installer Flow ---
+custom_rootfs_installer() {
+    IS_CUSTOM_ROOTFS=1
+    log_section "Custom Rootfs Automated Installation"
+    
+    TERMUX_HOME="/data/data/com.termux/files/home"
+    
+    if [ -f "$PWD/custom.tar.gz" ]; then
+        CUSTOM_ARCHIVE="$PWD/custom.tar.gz"
+    elif [ -n "$CALLER_PWD" ] && [ -f "$CALLER_PWD/custom.tar.gz" ]; then
+        CUSTOM_ARCHIVE="$CALLER_PWD/custom.tar.gz"
+    elif [ -f "$TERMUX_HOME/custom.tar.gz" ]; then
+        CUSTOM_ARCHIVE="$TERMUX_HOME/custom.tar.gz"
+    else
+        CUSTOM_ARCHIVE="$PWD/custom.tar.gz"
+    fi
+    
+    if [ ! -f "$CUSTOM_ARCHIVE" ]; then
+        echo ""
+        print_divider
+        print_centered "${YELLOW}${BOLD}No 'custom.tar.gz' found!${RESET}"
+        echo ""
+        print_centered "${WHITE}Please copy or move your rootfs archive to the current folder or Termux home:${RESET}"
+        print_centered "${CYAN}${BOLD}$PWD/custom.tar.gz${RESET}"
+        print_centered "${WHITE}or:${RESET} ${CYAN}${BOLD}$TERMUX_HOME/custom.tar.gz${RESET}"
+        echo ""
+        print_centered "${WHITE}Example command:${RESET}"
+        print_centered "${GREEN}cp /sdcard/Download/your-rootfs.tar.gz ./custom.tar.gz${RESET}"
+        print_divider
+        echo ""
+        read -rp "$(echo -e "${YELLOW}Press [Enter] after placing the file, or type 'q' to exit: ${RESET}")" retry_choice
+        if [[ "${retry_choice,,}" == "q"* ]]; then
+            echo -e "${CYAN}Installation cancelled.${RESET}"
+            exit 0
+        fi
+        if [ -f "$PWD/custom.tar.gz" ]; then
+            CUSTOM_ARCHIVE="$PWD/custom.tar.gz"
+        elif [ -n "$CALLER_PWD" ] && [ -f "$CALLER_PWD/custom.tar.gz" ]; then
+            CUSTOM_ARCHIVE="$CALLER_PWD/custom.tar.gz"
+        elif [ -f "$TERMUX_HOME/custom.tar.gz" ]; then
+            CUSTOM_ARCHIVE="$TERMUX_HOME/custom.tar.gz"
+        fi
+        if [ ! -f "$CUSTOM_ARCHIVE" ]; then
+            log_error "File still not found. Please place custom.tar.gz in the current folder or $TERMUX_HOME and try again."
+            exit 1
+        fi
+    fi
+    
+    log_info "Verifying integrity of $CUSTOM_ARCHIVE..."
+    local is_valid_tar=0
+    if gzip -t "$CUSTOM_ARCHIVE" >/dev/null 2>&1; then
+        is_valid_tar=1
+    elif xz -t "$CUSTOM_ARCHIVE" >/dev/null 2>&1; then
+        is_valid_tar=1
+    elif bzip2 -t "$CUSTOM_ARCHIVE" >/dev/null 2>&1; then
+        is_valid_tar=1
+    elif tar -tf "$CUSTOM_ARCHIVE" >/dev/null 2>&1; then
+        is_valid_tar=1
+    fi
+
+    if [ "$is_valid_tar" -eq 0 ]; then
+        log_error "The file at $CUSTOM_ARCHIVE is not a valid rootfs archive or is corrupted."
+        echo -e "${YELLOW}Please ensure your file is a valid .tar.gz, .tar.xz, .tar.bz2, or .tar rootfs.${RESET}"
+        exit 1
+    fi
+    log_success "Rootfs archive verified successfully ($CUSTOM_ARCHIVE)."
+    echo ""
+    
+    # 1. OS Family
+    print_divider
+    print_centered "${WHITE}${BOLD}Select the base OS Family for this rootfs:${RESET}"
+    echo ""
+    print_centered "  ${CYAN}1) Debian${RESET}     (Debian base / APT packages)          "
+    print_centered "  ${CYAN}2) Ubuntu${RESET}     (Ubuntu base / Standard APT packages) "
+    print_centered "  ${CYAN}3) Fedora${RESET}     (Fedora / RHEL / DNF packages)        "
+    print_centered "  ${CYAN}4) Arch Linux${RESET} (Arch / Pacman packages)              "
+    print_divider
+    echo ""
+    while true; do
+        read -rp "$(echo -e "${YELLOW}Enter choice [1-4] (default: 1): ${RESET}")" FAM_CHOICE
+        case "$FAM_CHOICE" in
+            1|"") DISTRO_FAMILY="debian"; break ;;
+            2) DISTRO_FAMILY="ubuntu"; break ;;
+            3) DISTRO_FAMILY="fedora"; break ;;
+            4) DISTRO_FAMILY="arch"; break ;;
+            *) log_warn "Invalid choice. Please enter 1, 2, 3, or 4." ;;
+        esac
+    done
+    
+    # 2. Container Name
+    echo ""
+    while true; do
+        read -rp "$(echo -e "${CYAN}Enter a unique container name (e.g. ubuntu-jammy, my-os): ${RESET}")" CUSTOM_NAME
+        CUSTOM_NAME="${CUSTOM_NAME,,}"
+        if [[ "$CUSTOM_NAME" =~ ^[a-z][a-z0-9_-]*$ ]]; then
+            local existing_distros=()
+            while IFS= read -r d; do [ -n "$d" ] && existing_distros+=("$d"); done < <(autochroot_list_distros)
+            local name_taken=0
+            for ed in "${existing_distros[@]}"; do
+                if [ "$ed" == "$CUSTOM_NAME" ]; then
+                    name_taken=1
+                    break
+                fi
+            done
+            if [ "$name_taken" -eq 1 ]; then
+                log_warn "Container name '$CUSTOM_NAME' is already installed! Please choose another name."
+            else
+                SELECTED_DISTRO="$CUSTOM_NAME"
+                break
+            fi
+        else
+            log_warn "Invalid name. Must start with a lowercase letter and contain only lowercase letters, numbers, '-', or '_'."
+        fi
+    done
+    
+    # 3. Setup Mode
+    echo ""
+    print_divider
+    print_centered "${WHITE}${BOLD}Select Configuration Mode:${RESET}"
+    echo ""
+    print_centered "  ${CYAN}1) Full Autochroot Setup${RESET} (XFCE4, Touch Audio/X11, User, GPU)    "
+    print_centered "  ${CYAN}2) Import Only${RESET}          (Headless / Raw Root Container without GUI) "
+    print_divider
+    echo ""
+    read -rp "$(echo -e "${YELLOW}Enter choice [1-2] (default: 1): ${RESET}")" CONF_MODE_CHOICE
+    case "$CONF_MODE_CHOICE" in
+        2) CUSTOM_SETUP_MODE="import" ;;
+        *) CUSTOM_SETUP_MODE="full" ;;
+    esac
+    
+    echo "$SELECTED_DISTRO" > "$HOME/.chroot_distro" 2>/dev/null || true
+    echo "$SELECTED_DISTRO" > "/data/data/com.termux/files/home/.chroot_distro" 2>/dev/null || true
+    export SELECTED_DISTRO DISTRO_FAMILY CUSTOM_SETUP_MODE IS_CUSTOM_ROOTFS
+    log_success "Custom configuration configured: ${SELECTED_DISTRO^^} (Family: ${DISTRO_FAMILY^^}, Mode: ${CUSTOM_SETUP_MODE^^})"
+}
+
 # --- Step 2.5: Select Linux Distribution ---
 get_distro_selection() {
+    if [ "${IS_CUSTOM_MODE:-0}" -eq 1 ]; then
+        custom_rootfs_installer
+        return 0
+    fi
+
     log_section "Step 2.5: Select Linux Distribution"
     
     if [ -f "$HOME/.chroot_distro" ]; then
@@ -294,15 +437,17 @@ get_distro_selection() {
     print_centered "  ${CYAN}1) Debian${RESET}    (Recommended - Highly stable, excellent support)  "
     print_centered "  ${CYAN}2) Fedora${RESET}    (Alternative - Modern, cutting-edge software)     "
     print_centered "  ${CYAN}3) Archlinux${RESET} (For advanced users)                              "
+    print_centered "  ${CYAN}4) Custom${RESET}    (Import custom.tar.gz rootfs from ~/ directory)   "
     print_divider
     echo ""
     while true; do
-        read -rp "$(echo -e "${YELLOW}Enter choice [1-3] (default: 1): ${RESET}")" DISTRO_CHOICE
+        read -rp "$(echo -e "${YELLOW}Enter choice [1-4] (default: 1): ${RESET}")" DISTRO_CHOICE
         case "$DISTRO_CHOICE" in
-            1|"") SELECTED_DISTRO="debian"; break ;;
-            2) SELECTED_DISTRO="fedora"; break ;;
-            3) SELECTED_DISTRO="archlinux"; break ;;
-            *) log_warn "Invalid choice. Please enter 1, 2, or 3." ;;
+            1|"") SELECTED_DISTRO="debian"; DISTRO_FAMILY="debian"; break ;;
+            2) SELECTED_DISTRO="fedora"; DISTRO_FAMILY="fedora"; break ;;
+            3) SELECTED_DISTRO="archlinux"; DISTRO_FAMILY="arch"; break ;;
+            4) custom_rootfs_installer; return 0 ;;
+            *) log_warn "Invalid choice. Please enter 1, 2, 3, or 4." ;;
         esac
     done
 
@@ -311,12 +456,21 @@ get_distro_selection() {
     chmod 666 "$HOME/.chroot_distro" 2>/dev/null || true
     chmod 666 "/data/data/com.termux/files/home/.chroot_distro" 2>/dev/null || true
     
-    export SELECTED_DISTRO
+    export SELECTED_DISTRO DISTRO_FAMILY
     log_success "Selected distribution: ${SELECTED_DISTRO^^}"
 }
 
 # --- Step 3: Prompt User Credentials (Prompted ONCE after root elevation) ---
 get_user_credentials() {
+    if [ "$CUSTOM_SETUP_MODE" = "import" ]; then
+        USERNAME="root"
+        echo "root" > "$HOME/.${SELECTED_DISTRO}_user" 2>/dev/null || true
+        echo "root" > "/data/data/com.termux/files/home/.${SELECTED_DISTRO}_user" 2>/dev/null || true
+        autochroot_save_distro "$SELECTED_DISTRO" "${DISTRO_FAMILY:-debian}" "import" "root" 2>/dev/null || true
+        log_info "Import-only mode: using root account for ${SELECTED_DISTRO^^}."
+        return 0
+    fi
+
     log_section "Step 3: User Account Setup for ${SELECTED_DISTRO^^}"
     
     while true; do
@@ -361,6 +515,15 @@ get_user_credentials() {
     chmod 666 "$HOME/.debian_user" 2>/dev/null || true
     chmod 666 "/data/data/com.termux/files/home/.debian_user" 2>/dev/null || true
 
+    if [ -z "$DISTRO_FAMILY" ]; then
+        case "$SELECTED_DISTRO" in
+            fedora) DISTRO_FAMILY="fedora" ;;
+            archlinux) DISTRO_FAMILY="arch" ;;
+            *) DISTRO_FAMILY="debian" ;;
+        esac
+    fi
+    autochroot_save_distro "$SELECTED_DISTRO" "$DISTRO_FAMILY" "full" "$USERNAME" 2>/dev/null || true
+
     log_success "User credentials registered for '$USERNAME'."
 }
 
@@ -368,7 +531,33 @@ get_user_credentials() {
 install_chroot_distro() {
     log_section "Step 4: Installing ${SELECTED_DISTRO^^} Environment via $DISTRO_CMD"
     
-    if [ "$SELECTED_DISTRO" = "archlinux" ]; then
+    if [ "${IS_CUSTOM_ROOTFS:-0}" -eq 1 ] && [ -f "$CUSTOM_ARCHIVE" ]; then
+        log_info "Launching '$DISTRO_CMD install -n $SELECTED_DISTRO $CUSTOM_ARCHIVE'..."
+        if ! $DISTRO_CMD install -n "$SELECTED_DISTRO" "$CUSTOM_ARCHIVE"; then
+            log_warn "Standard chroot-distro install encountered an archive header issue. Attempting native tar extraction fallback..."
+            ROOTFS_DEST="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/chroot-distro/installed-rootfs/$SELECTED_DISTRO"
+            mkdir -p "$ROOTFS_DEST"
+            if tar -xf "$CUSTOM_ARCHIVE" -C "$ROOTFS_DEST" 2>/dev/null || tar -xzf "$CUSTOM_ARCHIVE" -C "$ROOTFS_DEST" 2>/dev/null; then
+                # Configure basic Android resolver & hosts files
+                echo "nameserver 8.8.8.8" > "$ROOTFS_DEST/etc/resolv.conf" 2>/dev/null || true
+                echo "127.0.0.1 localhost" > "$ROOTFS_DEST/etc/hosts" 2>/dev/null || true
+                log_success "Native extraction fallback succeeded."
+            else
+                log_error "Installation stopped or failed for custom rootfs '$SELECTED_DISTRO'!"
+                exit 1
+            fi
+        fi
+        # Ensure container manifest.json exists to avoid chroot-distro warnings
+        CONTAINER_META_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/chroot-distro/containers/$SELECTED_DISTRO"
+        mkdir -p "$CONTAINER_META_DIR" 2>/dev/null || true
+        if [ ! -f "$CONTAINER_META_DIR/manifest.json" ]; then
+            echo '{"arch": "aarch64", "architecture": "aarch64"}' > "$CONTAINER_META_DIR/manifest.json" 2>/dev/null || true
+        fi
+
+        log_success "Custom rootfs '$SELECTED_DISTRO' installed successfully."
+        read -rp "Delete $CUSTOM_ARCHIVE to free storage? [y/N]: " del_custom
+        case "${del_custom,,}" in y|yes) rm -f "$CUSTOM_ARCHIVE" ;; esac
+    elif [ "$SELECTED_DISTRO" = "archlinux" ]; then
         log_info "Downloading Arch Linux ARM (aarch64) rootfs..."
         ARCH_TAR="/data/local/tmp/ArchLinuxARM-aarch64-latest.tar.gz"
         mkdir -p /data/local/tmp
@@ -377,8 +566,8 @@ install_chroot_distro() {
         rm -f "$ARCH_TAR"
         wget -q --show-progress -O "$ARCH_TAR" "http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz" || curl -L "http://os.archlinuxarm.org/os/ArchLinuxARM-aarch64-latest.tar.gz" -o "$ARCH_TAR"
         
-        log_info "Launching '$DISTRO_CMD install $ARCH_TAR -n archlinux'..."
-        if ! $DISTRO_CMD install "$ARCH_TAR" -n archlinux; then
+        log_info "Launching '$DISTRO_CMD install -n archlinux $ARCH_TAR'..."
+        if ! $DISTRO_CMD install -n archlinux "$ARCH_TAR"; then
             log_error "Installation stopped or failed for Arch Linux!"
             exit 1
         fi
@@ -399,6 +588,11 @@ install_chroot_distro() {
 
 # --- Step 6: Configure System & Touch DE ---
 configure_chroot_system() {
+    if [ "$CUSTOM_SETUP_MODE" = "import" ]; then
+        log_info "Import-only mode: skipping desktop & user configuration."
+        return 0
+    fi
+
     log_section "Step 6: Configuring ${SELECTED_DISTRO^^} Chroot (User, Sudo, Audio, X11, Touch DE, Drivers)"
     
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -413,17 +607,19 @@ configure_chroot_system() {
 
     SETUP_B64=$(base64 -w0 "$DISTRO_SETUP_SCRIPT" 2>/dev/null || base64 "$DISTRO_SETUP_SCRIPT" | tr -d '\r\n')
     
-    # Inject local Mesa drivers zip if it exists (for offline/developer testing)
-    ROOTFS_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/chroot-distro/installed-rootfs/$SELECTED_DISTRO"
-    if [ -d "$ROOTFS_DIR/tmp" ] && [ -f "$SCRIPT_DIR/mesa-debs-trixie.zip" ]; then
-        cp "$SCRIPT_DIR/mesa-debs-trixie.zip" "$ROOTFS_DIR/tmp/mesa-debs-trixie.zip" 2>/dev/null || true
+    # Inject local Mesa drivers zip if it exists (for offline/developer testing on pure Debian)
+    if [ "$DISTRO_FAMILY" != "ubuntu" ]; then
+        ROOTFS_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/chroot-distro/installed-rootfs/$SELECTED_DISTRO"
+        if [ -d "$ROOTFS_DIR/tmp" ] && [ -f "$SCRIPT_DIR/mesa-debs-trixie.zip" ]; then
+            cp "$SCRIPT_DIR/mesa-debs-trixie.zip" "$ROOTFS_DIR/tmp/mesa-debs-trixie.zip" 2>/dev/null || true
+        fi
     fi
 
     $DISTRO_CMD login $SELECTED_DISTRO -- bash -c "
         export SETUP_MODE='$SETUP_MODE'
         echo '$SETUP_B64' | base64 -d > /tmp/distro_setup.sh
         chmod +x /tmp/distro_setup.sh
-        bash /tmp/distro_setup.sh '$USERNAME' '$PASSWORD' '$IS_ADRENO' '$ADRENO_SERIES' '$SELECTED_DISTRO' '$SUDO_CHOICE'
+        bash /tmp/distro_setup.sh '$USERNAME' '$PASSWORD' '$IS_ADRENO' '$ADRENO_SERIES' '$DISTRO_FAMILY' '$SUDO_CHOICE'
     "
 
     log_success "${SELECTED_DISTRO^^} internal configuration complete."
@@ -446,6 +642,19 @@ setup_launchers() {
 
 # --- Step 8: GPU Driver Verification & Final Output ---
 verify_and_finish() {
+    if [ "$CUSTOM_SETUP_MODE" = "import" ]; then
+        echo ""
+        print_divider
+        print_centered "${GREEN}${BOLD}✓ Custom Rootfs '${SELECTED_DISTRO^^}' Imported Successfully!${RESET}"
+        print_divider
+        echo ""
+        print_centered "${WHITE}Launch your custom container directly using:${RESET}"
+        print_centered "${GREEN}${BOLD}autochroot start${RESET}  ${WHITE}or${RESET}  ${CYAN}${BOLD}$DISTRO_CMD login $SELECTED_DISTRO${RESET}"
+        echo ""
+        print_divider
+        return 0
+    fi
+
     log_section "Step 8: Verifying GPU Drivers & Finalizing Installation"
 
     # Enforce device permissions on host
@@ -464,22 +673,13 @@ verify_and_finish() {
         export DISPLAY=:0
         export PULSE_SERVER=tcp:127.0.0.1:4713
         if [ -f /usr/share/vulkan/icd.d/freedreno_icd.aarch64.json ] || [ -f /etc/vulkan/icd.d/turnip_icd.json ]; then
-            echo 'DRIVER_TURNIP_PRESENT'
+            echo 'VULKAN_READY'
+        elif command -v glxinfo &> /dev/null; then
+            echo 'OPENGL_READY'
         else
-            echo 'DRIVER_BASIC_PRESENT'
+            echo 'DESKTOP_READY'
         fi
-    " 2>/dev/null || echo "DRIVER_CHECK_OK")
-
-    echo ""
-    if [ "$VERIFY_RESULT" == "DRIVER_TURNIP_PRESENT" ]; then
-        if [ "$ADRENO_SERIES" == "A5XX" ]; then
-            log_success "GPU Driver Verification Passed! Qualcomm Freedreno Native OpenGL stack active."
-        else
-            log_success "GPU Driver Verification Passed! Qualcomm Freedreno Turnip & Zink Vulkan stack active."
-        fi
-    else
-        log_warn "GPU Driver loaded with standard graphics rendering layer."
-    fi
+    " 2>/dev/null || echo "CHECK_FAILED")
 
     echo ""
     echo -e "${GREEN}${BOLD}"
@@ -519,8 +719,30 @@ verify_and_finish() {
     echo -e "${RESET}"
 }
 
+# --- Automatic De-elevation & Permission Restoration ---
+restore_user_permissions() {
+    if [ "$(id -u)" -eq 0 ]; then
+        local termux_user
+        termux_user=$(stat -c "%U" /data/data/com.termux/files/home 2>/dev/null || stat -c "%U" /data/data/com.termux 2>/dev/null || echo "")
+        if [ -n "$termux_user" ] && [ "$termux_user" != "root" ]; then
+            chown -R "$termux_user:$termux_user" /data/data/com.termux/files/home/.chroot_distro* /data/data/com.termux/files/home/.*_user /data/data/com.termux/files/home/custom.tar.gz 2>/dev/null || true
+            chown -R "$termux_user:$termux_user" "${PREFIX:-/data/data/com.termux/files/usr}/var/lib/autochroot" 2>/dev/null || true
+        fi
+    fi
+}
+trap restore_user_permissions EXIT
+
 # --- Main Execution Flow ---
 main() {
+    IS_CUSTOM_MODE=0
+    for arg in "$@"; do
+        if [ "$arg" == "-c" ] || [ "$arg" == "--custom" ]; then
+            IS_CUSTOM_MODE=1
+            break
+        fi
+    done
+    export IS_CUSTOM_MODE
+
     if [ "$1" == "--elevated" ]; then
         # We are on the second pass (elevated to root). Skip deps.
         shift # remove --elevated from args
@@ -531,6 +753,8 @@ main() {
         configure_chroot_system
         setup_launchers
         verify_and_finish
+        # Cleanly exit root subshell to return to the non-root terminal session
+        exit 0
     else
         # First pass (normal user)
         if [ "$(id -u)" -eq 0 ]; then
@@ -541,6 +765,8 @@ main() {
         print_banner
         install_all_dependencies
         check_and_elevate_root "$@"
+        # Return cleanly to the caller's standard user prompt
+        exit 0
     fi
 }
 

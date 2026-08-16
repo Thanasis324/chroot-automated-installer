@@ -5,7 +5,7 @@
 # Purpose: Re-run package installations and configuration on broken distros
 # ==============================================================================
 
-set -e
+set +e
 
 # --- Color Definitions ---
 BOLD="\033[1m"
@@ -49,17 +49,15 @@ else
     exit 1
 fi
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
+
 SELECTED_DISTRO="$1"
 
 # If no distro was passed as an argument, auto-detect installed distros
 if [ -z "$SELECTED_DISTRO" ]; then
-    PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
     INSTALLED_DISTROS=()
-    for d in debian fedora archlinux; do
-        if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ]; then
-            INSTALLED_DISTROS+=("$d")
-        fi
-    done
+    while IFS= read -r d; do [ -n "$d" ] && INSTALLED_DISTROS+=("$d"); done < <(autochroot_list_distros)
     
     if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
         log_warn "Could not automatically detect installed distros."
@@ -124,11 +122,22 @@ export SETUP_MODE="false"
 echo -e "\n${YELLOW}${BOLD}=== Distro Configuration Repair ===${RESET}"
 echo -e "${WHITE}Executing repair utility for ${SELECTED_DISTRO^^}...${RESET}"
 
-log_info "Injecting repair script directly into ${SELECTED_DISTRO^^} rootfs..."
+# Auto-detect distro family from state
+autochroot_load_distro "$SELECTED_DISTRO"
+EFFECTIVE_FAMILY="${DISTRO_FAMILY:-$SELECTED_DISTRO}"
+
+# Ensure container manifest.json exists to avoid architecture warnings
+CONTAINER_META_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/chroot-distro/containers/$SELECTED_DISTRO"
+if [ -d "$CONTAINER_META_DIR" ] && [ ! -f "$CONTAINER_META_DIR/manifest.json" ]; then
+    mkdir -p "$CONTAINER_META_DIR" 2>/dev/null || true
+    echo '{"arch": "aarch64", "architecture": "aarch64"}' > "$CONTAINER_META_DIR/manifest.json" 2>/dev/null || true
+fi
 
 # Auto-detect the saved username
 SAVED_USER=""
-if [ -f "$HOME/.${SELECTED_DISTRO}_user" ]; then
+if [ -n "$CHROOT_USER" ]; then
+    SAVED_USER="$CHROOT_USER"
+elif [ -f "$HOME/.${SELECTED_DISTRO}_user" ]; then
     SAVED_USER=$(cat "$HOME/.${SELECTED_DISTRO}_user" | tr -d '\r\n')
 elif [ -f "/data/data/com.termux/files/home/.${SELECTED_DISTRO}_user" ]; then
     SAVED_USER=$(cat "/data/data/com.termux/files/home/.${SELECTED_DISTRO}_user" | tr -d '\r\n')
@@ -142,11 +151,11 @@ if [ -d "$ROOTFS_DIR/tmp" ] && [ -f "$SCRIPT_DIR/mesa-debs-trixie.zip" ]; then
     cp "$SCRIPT_DIR/mesa-debs-trixie.zip" "$ROOTFS_DIR/tmp/mesa-debs-trixie.zip" 2>/dev/null || true
 fi
 
-$DISTRO_CMD login $SELECTED_DISTRO -- bash -c "
+$DISTRO_CMD login "$SELECTED_DISTRO" --user root -- bash -c "
     export SETUP_MODE='$SETUP_MODE'
     echo '$SETUP_B64' | base64 -d > /tmp/distro_setup.sh
     chmod +x /tmp/distro_setup.sh
-    bash /tmp/distro_setup.sh '$SAVED_USER' '' '$IS_ADRENO' '$ADRENO_SERIES' '$SELECTED_DISTRO' ''
+    bash /tmp/distro_setup.sh '$SAVED_USER' '' '$IS_ADRENO' '$ADRENO_SERIES' '$EFFECTIVE_FAMILY' ''
 "
 
 log_success "${SELECTED_DISTRO^^} packages and configurations have been successfully repaired!"

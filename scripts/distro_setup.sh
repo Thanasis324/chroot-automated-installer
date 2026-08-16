@@ -1,11 +1,10 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Internal Debian Chroot Setup Script
-# Executed inside Debian rootfs during installation phase
-# Configures User, Groups, Audio, X11, Touch DE & Automatic GPU Drivers
+# Internal Chroot Setup & Repair Script
+# Configures User, Groups, Audio, X11, Touch DE & Dependencies
 # ==============================================================================
 
-set -e
+set +e
 export DEBIAN_FRONTEND=noninteractive
 
 USERNAME="${1:-user}"
@@ -28,35 +27,60 @@ WHITE="\033[38;5;231m"
 RESET="\033[0m"
 
 if [ "$SETUP_MODE" == "false" ]; then
-    echo -e "\n${YELLOW}${BOLD}=== Interactive Repair Mode ===${RESET}"
+    echo ""
+    echo -e "${YELLOW}${BOLD}================================================================================"
+    echo -e "                   DISTRO CONFIGURATION & REPAIR MENU                           "
+    echo -e "================================================================================${RESET}"
+    echo -e "${WHITE}Select components to reconfigure / repair for ${CYAN}${BOLD}${DISTRO_NAME^^}${RESET}:${WHITE}"
+    echo ""
     
     read -rp "$(echo -e "${CYAN}1. Reinstall and update all core packages? [Y/n]: ${RESET}")" PKG_PROMPT
-    [[ "${PKG_PROMPT,,}" == "n"* ]] && RUN_PKGS="no"
+    if [[ "${PKG_PROMPT,,}" == "n"* ]]; then
+        RUN_PKGS="no"
+    else
+        RUN_PKGS="yes"
+    fi
     
-    read -rp "$(echo -e "${CYAN}2. Rebuild X11 and Audio environment configs? [Y/n]: ${RESET}")" ENV_PROMPT
-    [[ "${ENV_PROMPT,,}" == "n"* ]] && RUN_ENV="no"
+    read -rp "$(echo -e "${CYAN}2. Rebuild X11, Display & Audio environment configs? [Y/n]: ${RESET}")" ENV_PROMPT
+    if [[ "${ENV_PROMPT,,}" == "n"* ]]; then
+        RUN_ENV="no"
+    else
+        RUN_ENV="yes"
+    fi
     
-    read -rp "$(echo -e "${CYAN}3. Reset user passwords and permissions? [Y/n]: ${RESET}")" USER_PROMPT
-    [[ "${USER_PROMPT,,}" == "n"* ]] && RUN_USER="no"
+    read -rp "$(echo -e "${CYAN}3. Reconfigure user accounts, passwords & sudo? [Y/n]: ${RESET}")" USER_PROMPT
+    if [[ "${USER_PROMPT,,}" == "n"* ]]; then
+        RUN_USER="no"
+    else
+        RUN_USER="yes"
+    fi
     
     if [ "$RUN_USER" == "yes" ]; then
         echo ""
-        read -rp "$(echo -e "${CYAN}Please enter the username to configure (default: ${USERNAME}): ${RESET}")" PROMPT_USER
-        USERNAME="${PROMPT_USER:-$USERNAME}"
+        read -rp "$(echo -e "${CYAN}Please enter the username to configure (current: ${YELLOW}${USERNAME}${CYAN}): ${RESET}")" PROMPT_USER
+        if [ -n "$PROMPT_USER" ]; then
+            USERNAME="$PROMPT_USER"
+        fi
         
         read -rsp "$(echo -e "${CYAN}Enter new password for $USERNAME: ${RESET}")" PASSWORD
         echo ""
-        read -rp "$(echo -e "${CYAN}Enable passwordless sudo? [y/N]: ${RESET}")" SUDO_PROMPT
-        case "${SUDO_PROMPT,,}" in
-            y|yes) SUDO_CHOICE="yes" ;;
-            *) SUDO_CHOICE="no" ;;
-        esac
+        if [ -z "$PASSWORD" ]; then
+            PASSWORD="password"
+        fi
+        
+        read -rp "$(echo -e "${CYAN}Enable passwordless sudo? [Y/n]: ${RESET}")" SUDO_PROMPT
+        if [[ "${SUDO_PROMPT,,}" == "n"* ]]; then
+            SUDO_CHOICE="no"
+        else
+            SUDO_CHOICE="yes"
+        fi
     else
         # If user setup is skipped, set default fallbacks so the variables exist
         PASSWORD="password"
         SUDO_CHOICE="no"
     fi
-    echo -e "${YELLOW}===============================${RESET}\n"
+    echo -e "${YELLOW}${BOLD}================================================================================${RESET}"
+    echo ""
 fi
 
 echo -e "${CYAN}${BOLD}[${DISTRO_NAME^^} SETUP] Initializing environment configuration...${RESET}"
@@ -76,7 +100,7 @@ echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Updating package repositories and insta
 if [ "$DISTRO_NAME" = "fedora" ]; then
     dnf update -y
     dnf install -y @xfce-desktop-environment || true
-    FEDORA_DEPS=(sudo dbus dbus-x11 dconf pulseaudio-utils alsa-utils curl wget git figlet pciutils lshw florence arc-theme papirus-icon-theme google-noto-sans-fonts vulkan-loader mesa-vulkan-drivers mesa-dri-drivers mesa-libGL glx-utils vulkan-tools libdisplay-info polkit-gnome)
+    FEDORA_DEPS=(sudo dbus dbus-x11 dconf at-spi2-core mousetweaks pulseaudio-utils alsa-utils curl wget git figlet pciutils lshw florence arc-theme papirus-icon-theme google-noto-sans-fonts vulkan-loader mesa-vulkan-drivers mesa-dri-drivers mesa-libGL glx-utils vulkan-tools libdisplay-info polkit-gnome)
     if ! dnf install -y "${FEDORA_DEPS[@]}"; then
         echo -e "${YELLOW}Bulk installation failed. Retrying sequentially...${RESET}"
         for dep in "${FEDORA_DEPS[@]}"; do
@@ -99,7 +123,7 @@ elif [ "$DISTRO_NAME" = "archlinux" ]; then
     pacman-key --populate archlinuxarm || pacman-key --populate archlinux
     pacman -Syu --noconfirm
 
-    ARCH_DEPS=(sudo dbus dbus-glib pulseaudio alsa-utils curl wget git figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-gtk-theme papirus-icon-theme noto-fonts mesa vulkan-icd-loader vulkan-freedreno vulkan-swrast vulkan-mesa-layers mesa-utils vulkan-tools libdisplay-info chromium polkit-gnome)
+    ARCH_DEPS=(sudo dbus dbus-glib at-spi2-core pulseaudio alsa-utils curl wget git figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-gtk-theme papirus-icon-theme noto-fonts mesa vulkan-icd-loader vulkan-freedreno vulkan-swrast vulkan-mesa-layers mesa-utils vulkan-tools libdisplay-info chromium polkit-gnome)
     
     # Bulk install first for speed, fallback to sequential if a package is invalid
     if ! pacman -S --noconfirm "${ARCH_DEPS[@]}"; then
@@ -117,7 +141,7 @@ else
     apt-get update -y || true
     apt-get upgrade -y || true
 
-    DEB_DEPS=(sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard arc-theme papirus-icon-theme fonts-noto fonts-dejavu vulkan-tools virgl-server libvirglrenderer1 firefox-esr libdisplay-info-dev mesa-utils libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 libglx-mesa0 libegl-mesa0 libgl1 libglapi-mesa libgbm1)
+    DEB_DEPS=(sudo dbus dbus-x11 dconf-cli pulseaudio-utils alsa-utils curl wget git ca-certificates gnupg figlet pciutils lshw xfce4 xfce4-goodies xfce4-terminal onboard gir1.2-atspi-2.0 at-spi2-core mousetweaks libcanberra-gtk3-module libcanberra-gtk-module arc-theme papirus-icon-theme fonts-noto fonts-dejavu vulkan-tools virgl-server libvirglrenderer1 firefox-esr libdisplay-info-dev mesa-utils libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 libglx-mesa0 libegl-mesa0 libgl1 libglapi-mesa libgbm1)
     
     echo -e "${YELLOW}Installing core system packages...${RESET}"
     if ! apt-get install -y --no-install-recommends "${DEB_DEPS[@]}"; then

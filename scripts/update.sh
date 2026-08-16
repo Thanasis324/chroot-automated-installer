@@ -11,9 +11,22 @@ RED="\033[31m"
 RESET="\033[0m"
 
 REQUESTED_TAG=""
+BUILD_MESA_RELEASE_ASSET=0
 
 # --- Secret Dev Utility Mode ---
 if [ "$1" == "-d" ]; then
+    shift
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -m) BUILD_MESA_RELEASE_ASSET=1 ;;
+            *)
+                echo -e "${RED}Usage: autochroot update -d [-m]${RESET}"
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
     echo -e "${CYAN}${BOLD}=== Developer Release Mode ===${RESET}"
     PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
     REPO_DIR="$PREFIX_ROOT/Chroot-Automated-Installer"
@@ -38,9 +51,9 @@ if [ "$1" == "-d" ]; then
     fi
     
     # 1. Ensure required tools are installed
-    if ! command -v zip &> /dev/null || ! command -v gh &> /dev/null || ! command -v git &> /dev/null; then
-        echo -e "${YELLOW}Installing required dev packages (zip, gh, git)...${RESET}"
-        pkg install zip gh git -y
+    if ! command -v zip &> /dev/null || ! command -v gh &> /dev/null || ! command -v git &> /dev/null || { [ "$BUILD_MESA_RELEASE_ASSET" -eq 1 ] && ! command -v curl &> /dev/null; }; then
+        echo -e "${YELLOW}Installing required dev packages (zip, gh, git, curl)...${RESET}"
+        pkg install zip gh git curl -y
     fi
     
     cd "$REPO_DIR" || exit 1
@@ -55,6 +68,7 @@ if [ "$1" == "-d" ]; then
         echo -e "${YELLOW}Committing and pushing to GitHub main branch...${RESET}"
         git add .
         git commit -m "$commit_msg" || true
+        GIT_EDITOR=true git pull --rebase origin main || true
         git push origin main
         if [ "$dev_choice" == "1" ]; then
             echo -e "${GREEN}${BOLD}Changes committed and pushed successfully!${RESET}"
@@ -75,6 +89,15 @@ if [ "$1" == "-d" ]; then
         if [ -z "$rel_tag" ]; then
             echo -e "${RED}Tag cannot be empty. Aborting.${RESET}"
             exit 1
+        fi
+
+        if [ "$BUILD_MESA_RELEASE_ASSET" -eq 1 ]; then
+            echo -e "${YELLOW}Building Mesa release asset...${RESET}"
+            bash "$REPO_DIR/scripts/bundle_mesa.sh"
+            if [ ! -f "$REPO_DIR/mesa-debs-trixie.zip" ]; then
+                echo -e "${RED}Mesa bundle was not created. Release cancelled.${RESET}"
+                exit 1
+            fi
         fi
         
         # Create the ZIP archive

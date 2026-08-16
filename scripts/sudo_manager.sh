@@ -47,13 +47,11 @@ else
     exit 1
 fi
 
-PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
+
 INSTALLED_DISTROS=()
-for d in debian fedora archlinux; do
-    if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ]; then
-        INSTALLED_DISTROS+=("$d")
-    fi
-done
+while IFS= read -r d; do [ -n "$d" ] && INSTALLED_DISTROS+=("$d"); done < <(autochroot_list_distros)
 
 if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
     log_error "No distros detected! Install one with setup.sh first."

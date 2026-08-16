@@ -13,13 +13,11 @@ PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
 export PATH="$PATH:$HOME/.local/bin:/data/data/com.termux/files/usr/bin"
 DISTRO_CMD="chroot-distro"
 INSTALLED_DISTROS=()
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+source "$SCRIPT_DIR/scripts/autochroot_state.sh" 2>/dev/null || true
 
-# Fast directory check instead of calling slow 'chroot-distro list'
-for d in debian fedora archlinux; do
-    if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ]; then
-        INSTALLED_DISTROS+=("$d")
-    fi
-done
+# Fast directory check instead of calling slow 'chroot-distro list'.
+while IFS= read -r d; do INSTALLED_DISTROS+=("$d"); done < <(autochroot_list_distros)
 
 
 if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
@@ -64,7 +62,6 @@ else
 fi
 
 # Locate and execute the sub-script
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
 if [ -z "$SCRIPT_DIR" ]; then SCRIPT_DIR="$PWD"; fi
 
 if [ -f "$SCRIPT_DIR/scripts/start_${SELECTED_DISTRO}.sh" ]; then
@@ -72,6 +69,9 @@ if [ -f "$SCRIPT_DIR/scripts/start_${SELECTED_DISTRO}.sh" ]; then
 elif [ -f "${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer/scripts/start_${SELECTED_DISTRO}.sh" ]; then
     exec bash "${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer/scripts/start_${SELECTED_DISTRO}.sh" "$@"
 else
-    echo -e "${YELLOW}Error: Sub-script for ${SELECTED_DISTRO} not found at expected paths!${RESET}"
-    exit 1
+    autochroot_load_distro "$SELECTED_DISTRO"
+    case "$DISTRO_FAMILY" in fedora|rhel) START_FAMILY="fedora" ;; arch) START_FAMILY="archlinux" ;; *) START_FAMILY="debian" ;; esac
+    export AUTOCHROOT_SELECTED_DISTRO="$SELECTED_DISTRO"
+    export AUTOCHROOT_SELECTED_USER="$CHROOT_USER"
+    exec bash "$SCRIPT_DIR/scripts/start_${START_FAMILY}.sh" "$@"
 fi

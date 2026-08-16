@@ -10,7 +10,21 @@ GREEN="\033[38;5;46m"
 YELLOW="\033[38;5;226m"
 RESET="\033[0m"
 
-SELECTED_DISTRO="debian"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
+
+SELECTED_DISTRO="${AUTOCHROOT_SELECTED_DISTRO:-debian}"
+autochroot_load_renderer "$SELECTED_DISTRO"
+RENDERER="${RENDERER:-zink}"
+
+case "$RENDERER" in
+    zink) RENDERER_DESC="Zink (Turnip Vulkan Acceleration)" ;;
+    freedreno) RENDERER_DESC="Freedreno (Native OpenGL Acceleration)" ;;
+    virgl) RENDERER_DESC="VirGL (Host Hardware Passthrough)" ;;
+    gl4es) RENDERER_DESC="GL4ES (OpenGL Translation over VirGL)" ;;
+    llvmpipe) RENDERER_DESC="LLVMpipe (CPU Software Rendering)" ;;
+    *) RENDERER_DESC="$RENDERER" ;;
+esac
 
 if command -v chroot-distro &> /dev/null; then
     DISTRO_CMD="chroot-distro"
@@ -24,7 +38,9 @@ tsu -c "chmod 666 /dev/kgsl-3d0 /dev/dri/* /dev/mali* /dev/ion /dev/dma_heap/*" 
 su -c "chmod 666 /dev/kgsl-3d0 /dev/dri/* /dev/mali* /dev/ion /dev/dma_heap/*" 2>/dev/null || \
 chmod 666 /dev/kgsl-3d0 /dev/dri/* /dev/mali* /dev/ion /dev/dma_heap/* 2>/dev/null || true
 
-if [ -n "$1" ]; then
+if [ -n "${AUTOCHROOT_SELECTED_USER:-}" ]; then
+    CHROOT_USER="$AUTOCHROOT_SELECTED_USER"
+elif [ -n "$1" ]; then
     CHROOT_USER="$1"
 elif [ -f "$HOME/.${SELECTED_DISTRO}_user" ]; then
     CHROOT_USER=$(cat "$HOME/.${SELECTED_DISTRO}_user" | tr -d '\r\n')
@@ -61,11 +77,15 @@ am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 2>/dev/null || t
 /system/bin/am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 2>/dev/null || true
 sleep 1
 
-echo -e "${CYAN}${BOLD}Starting VirGL Rendering Server...${RESET}"
-if command -v virgl_test_server >/dev/null 2>&1; then
-    if ! pgrep -x virgl_test_server >/dev/null 2>&1; then
-        virgl_test_server --use-egl-surfaceless >/dev/null 2>&1 &
+if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
+    echo -e "${CYAN}${BOLD}Starting VirGL Rendering Server...${RESET}"
+    if command -v virgl_test_server >/dev/null 2>&1; then
+        if ! pgrep -x virgl_test_server >/dev/null 2>&1; then
+            virgl_test_server --use-egl-surfaceless >/dev/null 2>&1 &
+        fi
     fi
+else
+    echo -e "${CYAN}${BOLD}Active Graphics Backend:${RESET} ${GREEN}${RENDERER_DESC}${RESET}"
 fi
 
 echo -e "${CYAN}${BOLD}Starting PulseAudio daemon for Termux...${RESET}"
@@ -105,6 +125,7 @@ else
     CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- shared-tmp -- bash -c"
 fi
 
+START_TIME=$(date +%s)
 $CMD_PREFIX "
     source /etc/profile 2>/dev/null || true
     if [ -f /etc/profile.d/termux_env.sh ]; then source /etc/profile.d/termux_env.sh; fi
@@ -129,13 +150,28 @@ $CMD_PREFIX "
     pkill -f termux-udevd 2>/dev/null || true
     chmod 660 /dev/input/event* 2>/dev/null || true
 "
+SESSION_EXIT_CODE=$?
+SESSION_DURATION=$(( $(date +%s) - START_TIME ))
 
 # If the Shutdown shortcut was used, trigger the container kill
+SHUTDOWN_REQUESTED=0
 if $DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- bash -c "[ -f ~/.do_shutdown ]" 2>/dev/null; then
+    SHUTDOWN_REQUESTED=1
     $DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- bash -c "rm -f ~/.do_shutdown" 2>/dev/null
     echo -e "${RED}${BOLD}Shutting down ${SELECTED_DISTRO} environment...${RESET}"
     $DISTRO_CMD kill $SELECTED_DISTRO
 fi
 
+if [ "$SHUTDOWN_REQUESTED" -eq 0 ] && { [ "$SESSION_EXIT_CODE" -ne 0 ] || [ "$SESSION_DURATION" -lt 3 ]; }; then
+    echo ""
+    echo -e "${YELLOW}${BOLD}[!] Desktop session exited unexpectedly or failed to launch.${RESET}"
+    echo -e "${WHITE}If you experienced crashes, black screens, or graphics glitches:${RESET}"
+    echo -e "${CYAN}Run ${WHITE}autochroot config${CYAN} and select ${GREEN}'Fix / Update GPU Drivers'${CYAN} to choose another graphics backend (e.g., VirGL or LLVMpipe).${RESET}"
+    echo ""
+fi
+
 # Instantly free graphics RAM by killing the display server when the user exits
 pkill -9 -f termux-x11 >/dev/null 2>&1 || true
+if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
+    pkill -9 -x virgl_test_server >/dev/null 2>&1 || true
+fi

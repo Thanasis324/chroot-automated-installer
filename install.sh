@@ -80,13 +80,15 @@ show_help() {
     echo -e "\033[1mUsage:\033[0m autochroot [flags] <command> [args...]"
     echo ""
     echo -e "\033[1mCommands:\033[0m"
-    echo -e "  \033[32mautochroot start\033[0m   - Launch the desktop environment"
-    echo -e "  \033[32mautochroot config\033[0m  - Configure or repair the OS"
-    echo -e "  \033[32mautochroot setup\033[0m   - Run the initial installer"
-    echo -e "  \033[32mautochroot update\033[0m  - Update Termux or Autochroot"
+    echo -e "  \033[32mautochroot start\033[0m      - Launch the desktop environment"
+    echo -e "  \033[32mautochroot config\033[0m     - Configure or repair the OS"
+    echo -e "  \033[32mautochroot setup\033[0m      - Run the initial installer"
+    echo -e "  \033[32mautochroot setup -c\033[0m   - Install a custom rootfs (custom.tar.gz)"
+    echo -e "  \033[32mautochroot update\033[0m     - Update Termux or Autochroot"
     echo ""
     echo -e "\033[1mFlags:\033[0m"
     echo -e "  \033[33m-h\033[0m      - Show this help menu"
+    echo -e "  \033[33m-c\033[0m      - Custom rootfs installation mode"
     echo -e "  \033[33m-m\033[0m      - Manual mode (disables auto-selections)"
     echo -e "\033[36m========================================\033[0m"
 }
@@ -130,11 +132,15 @@ mkdir -p "$PREFIX/etc/bash_completion.d" 2>/dev/null || true
 cat << 'EOF' > "$PREFIX/etc/bash_completion.d/autochroot"
 _autochroot_completions() {
     local cur="${COMP_WORDS[COMP_CWORD]}"
-    local commands="start config setup update -h -m"
+    local commands="start config setup install update -h -m -c"
     COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
 }
 complete -F _autochroot_completions autochroot
 EOF
+
+# Clean up temporary update and installation files before launching the help screen
+rm -f "$HOME/installer.zip" 2>/dev/null || true
+rm -rf "$HOME/tmp/autochroot-update-"* "$HOME/tmp/Chroot.Automated.Script.zip" 2>/dev/null || true
 
 # Automatically run the help menu so the user sees the commands immediately
 "$PREFIX_BIN/autochroot" -h

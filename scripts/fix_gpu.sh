@@ -48,16 +48,13 @@ else
 fi
 
 SELECTED_DISTRO="$1"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
 
 # If no distro was passed as an argument, auto-detect installed distros
 if [ -z "$SELECTED_DISTRO" ]; then
-    PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
     INSTALLED_DISTROS=()
-    for d in debian fedora archlinux; do
-        if [ -d "$PREFIX_VAR/chroot-distro/containers/$d" ] || [ -d "$PREFIX_VAR/chroot-distro/installed-rootfs/$d" ]; then
-            INSTALLED_DISTROS+=("$d")
-        fi
-    done
+    while IFS= read -r d; do [ -n "$d" ] && INSTALLED_DISTROS+=("$d"); done < <(autochroot_list_distros)
     
     if [ ${#INSTALLED_DISTROS[@]} -eq 0 ]; then
         echo -e "${YELLOW}Warning: Could not automatically detect installed distros.${RESET}"
@@ -162,41 +159,55 @@ if [ "$plat_choice" == "1" ]; then
     print_centered "${WHITE}${BOLD}Select Graphics Backend:${RESET}"
     echo ""
     if [[ "$gen_choice" == "4" ]]; then
-        print_centered "  ${CYAN}1)${RESET} Zink/Turnip (Experimental on old GPUs)  "
-        print_centered "  ${CYAN}2)${RESET} Freedreno (Recommended native OpenGL)   "
+        print_centered "  ${CYAN}1)${RESET} Freedreno (Recommended Native OpenGL)    "
+        print_centered "  ${CYAN}2)${RESET} Zink/Turnip (Experimental on A5XX)       "
+        print_centered "  ${CYAN}3)${RESET} VirGL (Universal hardware fallback)       "
+        print_centered "  ${CYAN}4)${RESET} LLVMpipe (Pure CPU Software Rendering)    "
+        print_divider
+        echo ""
+        read -rp "Select Driver (1-4): " drv_choice
+        
+        case "$drv_choice" in
+            1) driver_choice="2" ;; # Freedreno
+            2) driver_choice="1" ;; # Zink/Turnip
+            3) driver_choice="3" ;; # VirGL
+            4) driver_choice="4" ;; # LLVMpipe
+            *) echo "Invalid selection."; exit 1 ;;
+        esac
     else
-        print_centered "  ${CYAN}1)${RESET} Zink/Turnip (Recommended Vulkan API)    "
-        print_centered "  ${CYAN}2)${RESET} Freedreno (Legacy fallback)             "
+        print_centered "  ${CYAN}1)${RESET} Zink/Turnip (Recommended Vulkan API)     "
+        print_centered "  ${CYAN}2)${RESET} Freedreno (Legacy fallback)              "
+        print_centered "  ${CYAN}3)${RESET} VirGL (Universal software fallback)       "
+        print_centered "  ${CYAN}4)${RESET} LLVMpipe (Pure CPU Software Rendering)    "
+        print_divider
+        echo ""
+        read -rp "Select Driver (1-4): " drv_choice
+        
+        case "$drv_choice" in
+            1) driver_choice="1" ;; # Zink
+            2) driver_choice="2" ;; # Freedreno
+            3) driver_choice="3" ;; # VirGL
+            4) driver_choice="4" ;; # LLVMpipe
+            *) echo "Invalid selection."; exit 1 ;;
+        esac
     fi
-    print_centered "  ${CYAN}3)${RESET} VirGL (Universal software fallback)       "
-    print_centered "  ${CYAN}4)${RESET} LLVMpipe (Pure CPU Software Rendering)    "
-    print_divider
-    echo ""
-    read -rp "Select Driver (1-4): " drv_choice
-    
-    case "$drv_choice" in
-        1) driver_choice="1" ;; # Zink
-        2) driver_choice="2" ;; # Freedreno
-        3) driver_choice="3" ;; # VirGL
-        4) driver_choice="4" ;; # LLVMpipe
-        *) echo "Invalid selection."; exit 1 ;;
-    esac
 
 elif [[ "$plat_choice" == "2" || "$plat_choice" == "3" || "$plat_choice" == "4" ]]; then
     echo ""
     print_divider
-    print_centered "${YELLOW}Turnip/Zink is exclusive to Adreno GPUs.${RESET}"
-    print_centered "${WHITE}For non-Adreno chips, VirGL is highly recommended.${RESET}"
+        print_centered "${YELLOW}Device has Multiple Experimental Recommended Modes${RESET}"
     echo ""
-    print_centered "  ${CYAN}1)${RESET} VirGL (Recommended Fallback)            "
-    print_centered "  ${CYAN}2)${RESET} LLVMpipe (Pure CPU Software Rendering)  "
+        print_centered "  ${CYAN}1)${RESET} GL4ES (Recommended Experimental)          "
+        print_centered "  ${CYAN}2)${RESET} VirGL (Recommended Fallback)            "
+        print_centered "  ${CYAN}3)${RESET} LLVMpipe (Pure CPU Software Rendering)  "
     print_divider
     echo ""
-    read -rp "Select Driver (1-2): " drv_choice
+    read -rp "Select Driver (1-3): " drv_choice
     
     case "$drv_choice" in
-        1) driver_choice="3" ;; # VirGL
-        2) driver_choice="4" ;; # LLVMpipe
+        1) driver_choice="5" ;; # GL4ES over VirGL
+        2) driver_choice="3" ;; # VirGL
+        3) driver_choice="4" ;; # LLVMpipe
         *) echo "Invalid selection."; exit 1 ;;
     esac
 else
@@ -245,7 +256,12 @@ case "$driver_choice" in
                 (cd /usr/lib/aarch64-linux-gnu && ln -sf $(basename $(ls libdisplay-info.so.* | grep -v "\.so\.2$" | head -n 1)) libdisplay-info.so.2)
             fi
             
-            if [ "$1" = "debian" ]; then
+            IS_UBUNTU=0
+            if [ -f /etc/os-release ] && grep -qi "ubuntu" /etc/os-release; then
+                IS_UBUNTU=1
+            fi
+            
+            if [ "$1" = "debian" ] && [ "$IS_UBUNTU" -eq 0 ]; then
                 echo "Downloading custom Debian Mesa bundle..."
                 cd /tmp
                 wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip || curl -sL -o mesa-debs-trixie.zip https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip
@@ -265,11 +281,21 @@ case "$driver_choice" in
                     LFDEVS_PATTERN="fedora_${FEDORA_VER}_arm64\.tar\.gz"
                 elif [ "$1" = "archlinux" ]; then
                     LFDEVS_PATTERN="archlinux_arm64\.tar"
+                elif [ "$IS_UBUNTU" -eq 1 ] || grep -qi "ubuntu" /etc/os-release 2>/dev/null; then
+                    UBUNTU_CODENAME=$(grep -oP "(?<=^VERSION_CODENAME=).+" /etc/os-release | tr -d \")
+                    [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME=$(grep -oP "(?<=^UBUNTU_CODENAME=).+" /etc/os-release | tr -d \")
+                    [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME="noble"
+                    LFDEVS_PATTERN="ubuntu_${UBUNTU_CODENAME}_arm64\.tar\.gz"
+                else
+                    LFDEVS_PATTERN="debian_trixie_arm64\.tar\.gz"
                 fi
                 # Bypass strict API rate limits by scraping the expanded_assets HTML fragment directly
                 LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
                 TAG=$(echo "$LATEST_URL" | awk -F "/" "{print \$NF}")
                 DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
+                if [ -z "$DOWNLOAD_URL" ] && { [ "$IS_UBUNTU" -eq 1 ] || grep -qi "ubuntu" /etc/os-release 2>/dev/null; }; then
+                    DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*ubuntu_[^\"]*_arm64\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
+                fi
                 if [ -n "$DOWNLOAD_URL" ]; then
                     DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
                 fi
@@ -391,10 +417,24 @@ case "$driver_choice" in
             fi
         "
         ;;
+    5)
+        log_warn "GL4ES is experimental. It will use VirGL as its desktop backend."
+        $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
+            sed -i '/export GALLIUM_DRIVER/d;/export MESA_LOADER_DRIVER_OVERRIDE/d;/export LIBGL_ALWAYS_SOFTWARE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
+        "
+        ;;
     *)
         echo -e "${RED}Invalid choice. Exiting.${RESET}"
         exit 1
         ;;
+esac
+
+case "$driver_choice" in
+    1) autochroot_save_renderer "$SELECTED_DISTRO" zink ;;
+    2) autochroot_save_renderer "$SELECTED_DISTRO" freedreno ;;
+    3) autochroot_save_renderer "$SELECTED_DISTRO" virgl ;;
+    4) autochroot_save_renderer "$SELECTED_DISTRO" llvmpipe ;;
+    5) autochroot_save_renderer "$SELECTED_DISTRO" gl4es ;;
 esac
 
 log_success "Graphics drivers successfully updated for $SELECTED_DISTRO!"
@@ -417,12 +457,25 @@ fi
 $DISTRO_CMD login $SELECTED_DISTRO --user root --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix -- bash -c "
     if command -v glxinfo >/dev/null 2>&1; then
         export DISPLAY=:99
-        if glxinfo -B 2>/dev/null | grep -q 'Accelerated: yes'; then
-            DRIVER=\$(glxinfo -B 2>/dev/null | grep 'OpenGL renderer string' | cut -d ':' -f 2 | sed 's/^[[:space:]]*//')
+        TEST_CMD=\"glxinfo -B\"
+        if [ \"$driver_choice\" = \"1\" ]; then
+            TEST_CMD=\"GALLIUM_DRIVER=zink MESA_LOADER_DRIVER_OVERRIDE=zink glxinfo -B\"
+        elif [ \"$driver_choice\" = \"2\" ]; then
+            TEST_CMD=\"GALLIUM_DRIVER=freedreno MESA_LOADER_DRIVER_OVERRIDE=freedreno glxinfo -B\"
+        elif [ \"$driver_choice\" = \"3\" ]; then
+            TEST_CMD=\"GALLIUM_DRIVER=virpipe glxinfo -B\"
+        fi
+        
+        GL_OUTPUT=\$(eval \"\$TEST_CMD\" 2>/dev/null || true)
+        if echo \"\$GL_OUTPUT\" | grep -qiE 'renderer string:.*(zink|freedreno|virgl|turnip|adreno|mali)'; then
+            DRIVER=\$(echo \"\$GL_OUTPUT\" | grep 'OpenGL renderer string' | cut -d ':' -f 2 | sed 's/^[[:space:]]*//')
+            echo -e \"\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware acceleration VERIFIED! Active Driver: \033[38;5;51m\$DRIVER\033[0m\n\"
+        elif echo \"\$GL_OUTPUT\" | grep -q 'Accelerated: yes'; then
+            DRIVER=\$(echo \"\$GL_OUTPUT\" | grep 'OpenGL renderer string' | cut -d ':' -f 2 | sed 's/^[[:space:]]*//')
             echo -e \"\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware acceleration VERIFIED! Active Driver: \033[38;5;51m\$DRIVER\033[0m\n\"
         else
             echo -e \"\n\033[31m[ERROR] OpenGL failed to accelerate. Your device may require different settings or VirGL.\033[0m\n\"
-            glxinfo -B 2>/dev/null | grep 'OpenGL renderer string' || true
+            echo \"\$GL_OUTPUT\" | grep 'OpenGL renderer string' || true
         fi
     else
         echo -e \"\n\033[38;5;226m[WARNING] glxinfo not installed. Skipping automatic verification.\033[0m\n\"
