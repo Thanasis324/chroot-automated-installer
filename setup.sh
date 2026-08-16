@@ -23,6 +23,14 @@ export PREFIX
 export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
 unset LD_PRELOAD 2>/dev/null || true
 
+# If running as root (elevated), immediately unlock Termux file permissions and fix SELinux
+if [ "${EUID:-1}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
+    chmod 755 /data/data/com.termux /data/data/com.termux/files /data/data/com.termux/files/usr /data/data/com.termux/files/usr/bin /data/data/com.termux/files/home 2>/dev/null || true
+    chmod -R 755 "$PREFIX/bin" 2>/dev/null || true
+    setenforce 0 2>/dev/null || true
+    chcon -R u:object_r:system_file:s0 "$PREFIX/bin" 2>/dev/null || true
+fi
+
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
 if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ] || [ ! -d "$SCRIPT_DIR/scripts" ]; then
     if [ -d "${PREFIX}/Chroot-Automated-Installer/scripts" ]; then
@@ -36,7 +44,7 @@ fi
 mkdir -p "$SCRIPT_DIR/scripts" 2>/dev/null || true
 source "$SCRIPT_DIR/scripts/autochroot_state.sh" 2>/dev/null || true
 export SETUP_MODE="true"
-echo 'SETUP_MODE="true"' > "$SCRIPT_DIR/scripts/global_settings.sh"
+echo 'SETUP_MODE="true"' > "$SCRIPT_DIR/scripts/global_settings.sh" 2>/dev/null || true
 
 # --- Color Definitions ---
 BOLD="\033[1m"
@@ -65,7 +73,7 @@ export DISTRO_CMD
 
 # --- Helper Functions ---
 print_banner() {
-    clear
+    clear 2>/dev/null || printf '\033[2J\033[H'
     echo -e "${CYAN}${BOLD}"
     echo "================================================================================"
     echo "       _   _   _ _____ ___   ____ _   _ ____   ___   ___ _____                  "
@@ -131,7 +139,7 @@ install_all_dependencies() {
 
     # Define a helper function to safely run pkg commands as the normal Termux user
     run_pkg() {
-        if [ "$(id -u)" -eq 0 ]; then
+        if [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
             # Find the actual Termux user (usually u0_aXXX)
             TERMUX_USER=$(stat -c "%U" /data/data/com.termux/files/home 2>/dev/null || stat -c "%U" /data/data/com.termux)
             if [ -n "$TERMUX_USER" ] && [ "$TERMUX_USER" != "root" ]; then
@@ -247,14 +255,14 @@ check_and_elevate_root() {
     log_section "Step 2: Verifying Root Privileges & Elevation"
     
     # 1. Check if currently running as root (UID 0)
-    if [ "$(id -u)" -eq 0 ]; then
+    if [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
         log_success "Script is running with root privileges (UID 0)."
         IS_ROOT=true
         export IS_ROOT
         return 0
     fi
 
-    log_warn "Script is currently running as non-root user (UID $(id -u))."
+    log_warn "Script is currently running as non-root user (UID ${EUID:-$UID})."
 
     # 2. Attempt root elevation cleanly via su / tsu
     log_info "Attempting root elevation via su / tsu..."
@@ -752,7 +760,7 @@ verify_and_finish() {
 
 # --- Automatic De-elevation & Permission Restoration ---
 restore_user_permissions() {
-    if [ "$(id -u)" -eq 0 ]; then
+    if [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
         local termux_user
         termux_user=$(stat -c "%U" /data/data/com.termux/files/home 2>/dev/null || stat -c "%U" /data/data/com.termux 2>/dev/null || echo "")
         if [ -n "$termux_user" ] && [ "$termux_user" != "root" ]; then
@@ -788,7 +796,7 @@ main() {
         exit 0
     else
         # First pass (normal user)
-        if [ "$(id -u)" -eq 0 ]; then
+        if [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
             echo -e "${RED}${BOLD}[ERROR] Please run this script WITHOUT sudo!${RESET}"
             echo -e "${WHITE}The script will automatically install Termux packages and then ask for root privileges when needed.${RESET}"
             exit 1
