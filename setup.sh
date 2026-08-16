@@ -16,7 +16,16 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
+if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ] || [ ! -d "$SCRIPT_DIR/scripts" ]; then
+    if [ -d "${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer/scripts" ]; then
+        SCRIPT_DIR="${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer"
+    elif [ -d "$HOME/chroot-automated-installer/scripts" ]; then
+        SCRIPT_DIR="$HOME/chroot-automated-installer"
+    else
+        SCRIPT_DIR="$PWD"
+    fi
+fi
 mkdir -p "$SCRIPT_DIR/scripts"
 source "$SCRIPT_DIR/scripts/autochroot_state.sh" 2>/dev/null || true
 export SETUP_MODE="true"
@@ -232,10 +241,15 @@ check_and_elevate_root() {
     # 2. Attempt root elevation cleanly without process crash
     log_info "Attempting root elevation via installed sudo / tsu..."
     export CALLER_PWD="${CALLER_PWD:-$PWD}"
+    SCRIPT_PATH="$SCRIPT_DIR/setup.sh"
+    [ ! -f "$SCRIPT_PATH" ] && SCRIPT_PATH="$PWD/setup.sh"
     
+    chmod -R 755 "$SCRIPT_DIR" 2>/dev/null || true
+    chmod -R 755 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
+
     set +e
     if command -v sudo &>/dev/null; then
-        sudo CALLER_PWD="$CALLER_PWD" bash "$0" --elevated "$@"
+        sudo CALLER_PWD="$CALLER_PWD" bash "$SCRIPT_PATH" --elevated "$@"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
@@ -243,7 +257,7 @@ check_and_elevate_root() {
     fi
 
     if command -v tsu &>/dev/null; then
-        tsu bash "$0" --elevated "$@"
+        tsu -c "CALLER_PWD='$CALLER_PWD' bash '$SCRIPT_PATH' --elevated $*"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
@@ -251,7 +265,7 @@ check_and_elevate_root() {
     fi
 
     if command -v su &>/dev/null; then
-        su -c "CALLER_PWD='$CALLER_PWD' bash \"$0\" --elevated \"$@\"" 2>/dev/null
+        su -c "CALLER_PWD='$CALLER_PWD' bash '$SCRIPT_PATH' --elevated $*"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
@@ -595,7 +609,6 @@ configure_chroot_system() {
 
     log_section "Step 6: Configuring ${SELECTED_DISTRO^^} Chroot (User, Sudo, Audio, X11, Touch DE, Drivers)"
     
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     DISTRO_SETUP_SCRIPT="$SCRIPT_DIR/scripts/distro_setup.sh"
 
     if [ ! -f "$DISTRO_SETUP_SCRIPT" ]; then
@@ -629,7 +642,6 @@ configure_chroot_system() {
 setup_launchers() {
     log_section "Step 7: Setting up Launcher Scripts & Audio/X11 Configuration"
 
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     START_SCRIPT="$SCRIPT_DIR/start-chroot.sh"
     
     if [ ! -f "$START_SCRIPT" ]; then
