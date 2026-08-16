@@ -57,17 +57,19 @@ PURPLE="\033[38;5;129m"
 CYAN="\033[38;5;51m"
 WHITE="\033[38;5;231m"
 
-# Dynamically resolve chroot-distro executable
-if command -v chroot-distro &>/dev/null; then
+# Dynamically resolve chroot-distro executable (Prioritize direct python3 module to prevent shebang bad interpreter)
+if [ -x "$PREFIX/bin/python3" ] && "$PREFIX/bin/python3" -m chroot_distro --help &>/dev/null 2>&1; then
+    DISTRO_CMD="$PREFIX/bin/python3 -m chroot_distro"
+elif python3 -m chroot_distro --help &>/dev/null 2>&1; then
+    DISTRO_CMD="python3 -m chroot_distro"
+elif command -v chroot-distro &>/dev/null; then
     DISTRO_CMD="chroot-distro"
 elif [ -x "$PREFIX/bin/chroot-distro" ]; then
     DISTRO_CMD="$PREFIX/bin/chroot-distro"
 elif [ -x "$TERMUX_HOME/.local/bin/chroot-distro" ]; then
     DISTRO_CMD="$TERMUX_HOME/.local/bin/chroot-distro"
-elif python3 -m chroot_distro --help &>/dev/null 2>&1; then
-    DISTRO_CMD="python3 -m chroot_distro"
 else
-    DISTRO_CMD="chroot-distro"
+    DISTRO_CMD="python3 -m chroot_distro"
 fi
 export DISTRO_CMD
 
@@ -239,6 +241,11 @@ install_all_dependencies() {
 
     PREFIX_BIN="${PREFIX:-/data/data/com.termux/files/usr}/bin"
     export PATH="$PATH:$HOME/.local/bin:$PREFIX_BIN:/system/bin"
+    
+    # Fix shebangs and ensure world execute permissions on Python, pip, and chroot-distro binaries
+    termux-fix-shebang "$PREFIX_BIN/chroot-distro" "$HOME/.local/bin/chroot-distro" 2>/dev/null || true
+    chmod 755 "$PREFIX_BIN/python"* "$PREFIX_BIN/pip"* "$PREFIX_BIN/chroot-distro"* 2>/dev/null || true
+    chmod -R 755 "$PREFIX_BIN" 2>/dev/null || true
 
         log_success "All Termux dependencies installed successfully."
     else
