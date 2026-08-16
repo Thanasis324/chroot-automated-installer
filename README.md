@@ -1,14 +1,14 @@
 # Termux Automated Linux Chroot Setup Script
 
-An automated, touch-optimized, and graphically appealing installation script for running **Fedora**, **Debian**, or **Arch Linux** inside **Termux** natively using **`chroot-distro`**. This script integrates **Termux:X11** display output, **PulseAudio** sound, and flawless hardware-accelerated **Qualcomm Adreno Turnip/Zink (A6XX / A7XX / A8XX) GPU Drivers** (alongside VirGL fallbacks).
+An automated, touch-optimized, and graphically appealing installation script for running **Fedora**, **Debian**, or **Arch Linux** inside **Termux** natively using **`chroot-distro`**. This script integrates **Termux:X11** display output, **PulseAudio** sound, and flawless hardware-accelerated **Qualcomm Adreno Turnip/Zink (A6XX / A7XX / A8XX) GPU Drivers**, alongside **VirGL** (stable universal fallback) and **GL4ES** (experimental acceleration for non-Adreno GPUs).
 
 ---
 
 ## 📊 Project Status
 
-- **Debian**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
-- **Fedora**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
-- **Arch Linux**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno & VirGL).
+- **Debian**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno, VirGL, and experimental GL4ES).
+- **Fedora**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno, VirGL, and experimental GL4ES).
+- **Arch Linux**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno, VirGL, and experimental GL4ES).
 - **Custom Distro**: 🟡 Generally works, but is for more advanced users (supports importing custom `.tar.gz` rootfs archives with optional automated touch desktop & GPU configuration).
 
 ---
@@ -57,9 +57,9 @@ The script features an advanced setup UI that will guide you through:
    - **Fedora** *(Alternative - Modern, cutting-edge software)*
    - **Archlinux** *(For advanced rolling-release users)*
 3. **Desired Username & Password**
-4. **GPU Architecture Fallback**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx/5xx** or **VirGL (Mali/PowerVR/Exynos/Tensor)**.
+4. **GPU Architecture Selection**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx/5xx**, **VirGL (stable fallback for Mali/PowerVR/Exynos/Tensor)**, or **GL4ES (experimental translation for non-Adreno GPUs)**.
 
-#### Step 3: Launch your Touch Desktop (Do NOT use sudo!)
+#### Step 4: Launch your Touch Desktop (Do NOT use sudo!)
 Once installation finishes, start your system:
 1. Open the **Termux:X11** app on your Android device.
 2. Launch the desktop directly as a regular Termux user:
@@ -78,7 +78,7 @@ autochroot config
 ```
 
 **Available Options:**
-1. **Fix / Update GPU Drivers**: Launches a tiered interactive menu that lets you change your SoC platform (Adreno/Tensor/Exynos), Adreno Generation, and Graphics Backend (Turnip+Zink / Freedreno / VirGL / LLVMpipe). Ideal if you upgraded your phone or chose the wrong driver during setup.
+1. **Fix / Update GPU Drivers**: Launches a tiered interactive menu that lets you change your SoC platform (Adreno/Tensor/Exynos/Mali), Adreno Generation, and Graphics Backend (Turnip+Zink / Freedreno / VirGL [stable fallback] / GL4ES [experimental] / LLVMpipe). Ideal if you upgraded your phone or chose the wrong driver during setup.
 2. **Repair Distro Packages & Settings**: Fixes broken apt/dnf/pacman packages, heals a broken XFCE4 desktop environment, or resets user configurations back to factory defaults without erasing the whole OS.
 3. **Manage Passwordless Sudo**: Dynamically toggle whether your Linux user account requires a password to execute root-level commands.
 4. **Manage Storage / Uninstall**: A safe removal utility that lets you delete specific Linux distributions (Debian/Fedora/Arch) to free up space, or completely eradicate the installer and its dependencies from Termux.
@@ -92,7 +92,7 @@ autochroot config
    - Fully supports Xbox, PlayStation (DualShock/DualSense), Nintendo Switch, 8BitDo, GameSir, and generic Bluetooth controllers out of the box.
 3. **Hardware-Accelerated Graphics**:
    - **Snapdragon / Adreno Users**: Automatically detects and unlocks your GPU's full potential using custom Vulkan and OpenGL drivers (Turnip/Zink). Even supports the newest Snapdragon 8 Gen 4 / 8 Elite!
-   - **Other Chips (Tensor, Exynos, Mali)**: Uses a reliable `VirGL` fallback so you still get a smooth, accelerated desktop experience.
+   - **Other Chips (Tensor, Exynos, Mali, PowerVR)**: Uses **VirGL** as a reliable, stable 3D acceleration fallback, with **GL4ES** available as an experimental translation layer for OpenGL games on GLES hardware.
 4. **Automated & Safe Setup**: The installer handles all the complicated permissions, audio routing, and root setups for you in the background without breaking your phone.
 5. **Touch-Optimized Desktop**:
    - Gives you a beautiful, pre-configured Dark Mode desktop (XFCE4).
@@ -111,10 +111,12 @@ If you are a developer or a power user tasked with debugging or extending this e
 *   **Environment Injection:** The base environment variables (like `XDG_RUNTIME_DIR` and DBus socket definitions) are statically generated into `/etc/profile.d/termux_env.sh` during setup. `start_fedora.sh` binds the container and executes the XFCE4 session using `dbus-run-session`.
 *   **Display & Audio:** X11 is piped directly to the `Termux:X11` Android app via local sockets (`DISPLAY=:0`). Audio is streamed via TCP to the Termux PulseAudio server (`PULSE_SERVER=tcp:127.0.0.1:4713`).
 
-**2. The GPU Acceleration Stack (Turnip + Zink)**
+**2. The GPU Acceleration Stack (Turnip + Zink / VirGL / GL4ES)**
 *   **The Hardware Bridge:** Adreno GPUs (especially the 8xx series like Snapdragon 8s Gen 4 / 8 Elite) use the **Turnip** Vulkan ICD (`freedreno_icd.aarch64.json`). OpenGL is layered on top of Vulkan using the **Zink** gallium driver.
 *   **Critical Vulkan/X11 Fix (`MESA_VK_WSI_DEBUG=sw`):** Termux:X11 operates over a socket and cannot natively ingest hardware DMA-BUF surfaces from Turnip. To prevent `CreateSwapchainKHR` and `GLXBadCurrentWindow` crashes in applications, we forcefully inject `MESA_VK_WSI_DEBUG=sw`. This commands Mesa's Window System Integration to utilize a software shared-memory buffer to present the final hardware-rendered frame to X11.
 *   **Adreno 8xx Stability:** Modern Adreno chips frequently hang on experimental Turnip drivers. We stabilize them by injecting `TU_DEBUG=kgsl,noconform,nolrz`.
+*   **VirGL Fallback:** Non-Adreno SoCs route through the VirGL server (`virgl_test_server`) communicating over `/tmp/.virgl_test`, providing stable 3D hardware rendering across Mali, Tensor, and Exynos chipsets.
+*   **Experimental GL4ES Translation:** For non-Adreno devices needing lightweight OpenGL 1.x/2.x support without full desktop Mesa stacks, GL4ES intercepts OpenGL calls and maps them to the underlying OpenGL ES hardware.
 *   **Software Rendering & CPU Compatibility:** When falling back to `LLVMpipe`, modern ARM CPUs may falsely report SVE capabilities, causing illegal instruction crashes (`SIGILL`) in 3D apps. We inject `GALLIVM_PERF=nopt` to disable these buggy JIT optimizations. Additionally, `OPENSSL_armcap=0` is set to prevent `libcrypto` from crashing during hardware capability probing on newer Snapdragon chips.
 *   **Helper Scripts:** The environment generates `/usr/local/bin/enable-zink` and `/usr/local/bin/enable-freedreno` to allow users to hot-swap graphics stacks via bash aliases if an application misbehaves.
 
@@ -145,7 +147,8 @@ If you are a developer or a power user tasked with debugging or extending this e
 *   **[lfdevs/mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)**: Huge thanks to these folks for providing pre-compiled, highly-optimized bleeding-edge Mesa drivers. They are the ones who allowed us to get the latest Mesa working seamlessly inside Debian, Fedora, and Arch Linux on Android!
 *   **[XFCE](https://xfce.org/)**: For the lightweight, fast, and touch-friendly desktop environment used in this setup.
 *   **[PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/)**: For enabling seamless audio streaming between the chroot and Android.
-*   **[VirGL](https://virgil3d.github.io/)**: For providing the fallback 3D acceleration for non-Adreno GPUs.
+*   **[VirGL](https://virgil3d.github.io/)**: For providing the rock-solid fallback 3D hardware acceleration for non-Adreno GPUs.
+*   **[GL4ES](https://github.com/ptitSeb/gl4es)**: For the lightweight OpenGL-to-GLES translation library enabling experimental 3D support on non-Adreno hardware.
 *   **[Arc Theme](https://github.com/horst3180/arc-theme) & [Papirus Icons](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)**: For the sleek and beautiful dark mode desktop aesthetics.
 *   **[Onboard](https://launchpad.net/onboard)**: For the touch-optimized virtual keyboard that makes interacting with the desktop possible.
 *   **[Box64](https://box86.org/) & [FEX-Emu](https://fex-emu.com/)**: For their incredible x86 emulation technologies that make PC gaming possible on ARM devices.
