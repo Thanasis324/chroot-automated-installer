@@ -172,16 +172,12 @@ install_all_dependencies() {
             if ! run_pkg "pkg update -y"; then
                 echo ""
                 log_error "Failed to update package repositories!"
-                log_error "Please check your internet connection and try again."
+                log_error "Please check your internet connection or run 'termux-change-repo' to select a working mirror."
                 echo ""
                 exit 1
             fi
         fi
     fi
-
-    # Allow user to select the fastest mirror for subsequent downloads
-    log_info "Launching Termux Repo Manager (Select the fastest mirror for your region)..."
-    run_pkg "termux-change-repo" || true
 
     log_info "Enabling required repositories (root-repo, x11-repo, tur-repo)..."
     run_pkg "pkg install -y root-repo x11-repo tur-repo 2>/dev/null" || true
@@ -274,10 +270,7 @@ check_and_elevate_root() {
     chmod -R 755 "$SCRIPT_DIR" 2>/dev/null || true
     chmod -R 755 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
 
-    ELEV_CMD="export PREFIX='$PREFIX'; export TERMUX_HOME='$TERMUX_HOME'; export PATH='$PATH'; export CALLER_PWD='$CALLER_PWD'; bash '$SCRIPT_PATH' --elevated"
-    if [ -n "$*" ]; then
-        ELEV_CMD="$ELEV_CMD $*"
-    fi
+    ELEV_CMD="export PREFIX='$PREFIX'; export TERMUX_HOME='$TERMUX_HOME'; export PATH='$PATH'; export CALLER_PWD='$CALLER_PWD'; export SELECTED_DISTRO='$SELECTED_DISTRO'; export DISTRO_FAMILY='$DISTRO_FAMILY'; export USERNAME='$USERNAME'; export PASSWORD='$PASSWORD'; export SUDO_CHOICE='$SUDO_CHOICE'; export CUSTOM_SETUP_MODE='$CUSTOM_SETUP_MODE'; export IS_CUSTOM_ROOTFS='$IS_CUSTOM_ROOTFS'; export IS_CUSTOM_MODE='$IS_CUSTOM_MODE'; export CUSTOM_ARCHIVE='$CUSTOM_ARCHIVE'; bash '$SCRIPT_PATH' --elevated"
 
     set +e
     if command -v su &>/dev/null; then
@@ -783,28 +776,37 @@ main() {
     export IS_CUSTOM_MODE
 
     if [ "$1" == "--elevated" ]; then
-        # We are on the second pass (elevated to root). Skip deps.
+        # We are on the elevated pass (running as root)
         shift # remove --elevated from args
-        get_distro_selection
-        get_user_credentials
+        if [ -z "$SELECTED_DISTRO" ]; then
+            get_distro_selection
+        fi
+        if [ -z "$USERNAME" ]; then
+            get_user_credentials
+        fi
         install_chroot_distro
-        # GPU driver configuration is handled externally at the end
         configure_chroot_system
         setup_launchers
         verify_and_finish
-        # Cleanly exit root subshell to return to the non-root terminal session
         exit 0
-    else
-        # First pass (normal user)
-        if [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
-            echo -e "${RED}${BOLD}[ERROR] Please run this script WITHOUT sudo!${RESET}"
-            echo -e "${WHITE}The script will automatically install Termux packages and then ask for root privileges when needed.${RESET}"
-            exit 1
-        fi
+    elif [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
+        # Running directly with root privileges
         print_banner
         install_all_dependencies
+        get_distro_selection
+        get_user_credentials
+        install_chroot_distro
+        configure_chroot_system
+        setup_launchers
+        verify_and_finish
+        exit 0
+    else
+        # Running as standard Termux non-root user
+        print_banner
+        install_all_dependencies
+        get_distro_selection
+        get_user_credentials
         check_and_elevate_root "$@"
-        # Return cleanly to the caller's standard user prompt
         exit 0
     fi
 }
