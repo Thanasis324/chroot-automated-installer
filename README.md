@@ -45,7 +45,7 @@ optionally remove the visible `~/chroot-automated-installer` download folder.
 Run the setup script directly as your standard Termux user (**Do NOT run with sudo!** The script intelligently elevates privileges automatically when needed):
 ```bash
 autochroot setup
-# Use 'autochroot setup -c' (or 'autochroot install -c') to install a custom rootfs (place custom.tar.gz in ~/):
+# Use 'autochroot setup -c' to install a custom rootfs (place custom.tar.gz in ~/):
 # autochroot setup -c
 ```
 
