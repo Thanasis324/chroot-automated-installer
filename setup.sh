@@ -258,10 +258,10 @@ check_and_elevate_root() {
         return 0
     fi
 
-    # 2. Persist state to secure transport file to prevent mksh / su command line truncation on Android 7
-    STATE_DIR="${PREFIX}/var/lib/autochroot"
-    mkdir -p "$STATE_DIR" 2>/dev/null || true
-    cat <<EOF > "$STATE_DIR/setup_state.env"
+    # 2. Persist state to secure transport file in Termux home to prevent mksh / su command line truncation on Android 7
+    STATE_FILE="${TERMUX_HOME:-/data/data/com.termux/files/home}/.autochroot_setup_state.env"
+    rm -f "$STATE_FILE" 2>/dev/null || true
+    cat <<EOF > "$STATE_FILE"
 PREFIX="$PREFIX"
 TERMUX_HOME="$TERMUX_HOME"
 CALLER_PWD="$CALLER_PWD"
@@ -275,9 +275,10 @@ IS_CUSTOM_ROOTFS="$IS_CUSTOM_ROOTFS"
 IS_CUSTOM_MODE="$IS_CUSTOM_MODE"
 CUSTOM_ARCHIVE="$CUSTOM_ARCHIVE"
 EOF
-    chmod 600 "$STATE_DIR/setup_state.env" 2>/dev/null || true
-    cp -f "$STATE_DIR/setup_state.env" "$TERMUX_HOME/.autochroot_setup_state.env" 2>/dev/null || true
-    chmod 600 "$TERMUX_HOME/.autochroot_setup_state.env" 2>/dev/null || true
+    chmod 666 "$STATE_FILE" 2>/dev/null || true
+    mkdir -p "${PREFIX}/var/lib/autochroot" 2>/dev/null || true
+    cp -f "$STATE_FILE" "${PREFIX}/var/lib/autochroot/setup_state.env" 2>/dev/null || true
+    chmod 666 "${PREFIX}/var/lib/autochroot/setup_state.env" 2>/dev/null || true
 
     log_info "Attempting root elevation via su / tsu..."
     export CALLER_PWD="${CALLER_PWD:-$PWD}"
@@ -808,9 +809,11 @@ restore_user_permissions() {
         local termux_user
         termux_user=$(stat -c "%U" /data/data/com.termux/files/home 2>/dev/null || stat -c "%U" /data/data/com.termux 2>/dev/null || echo "")
         if [ -n "$termux_user" ] && [ "$termux_user" != "root" ]; then
-            chown -R "$termux_user:$termux_user" /data/data/com.termux/files/home/.chroot_distro* /data/data/com.termux/files/home/.*_user /data/data/com.termux/files/home/custom.tar.gz 2>/dev/null || true
+            chown -R "$termux_user:$termux_user" /data/data/com.termux/files/home/.chroot_distro* /data/data/com.termux/files/home/.*_user /data/data/com.termux/files/home/custom.tar.gz /data/data/com.termux/files/home/.autochroot* 2>/dev/null || true
             chown -R "$termux_user:$termux_user" "${PREFIX:-/data/data/com.termux/files/usr}/var/lib/autochroot" 2>/dev/null || true
         fi
+        chmod 777 "${PREFIX:-/data/data/com.termux/files/usr}/var/lib/autochroot" 2>/dev/null || true
+        chmod 666 /data/data/com.termux/files/home/.chroot_distro* /data/data/com.termux/files/home/.*_user /data/data/com.termux/files/home/.autochroot* 2>/dev/null || true
     fi
 }
 trap restore_user_permissions EXIT
@@ -831,12 +834,12 @@ main() {
         shift # remove --elevated from args
 
         # Load persisted configuration state
-        STATE_FILE="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/autochroot/setup_state.env"
-        BACKUP_STATE="/data/data/com.termux/files/home/.autochroot_setup_state.env"
+        STATE_FILE="${TERMUX_HOME:-/data/data/com.termux/files/home}/.autochroot_setup_state.env"
+        FALLBACK_STATE="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/autochroot/setup_state.env"
         if [ -f "$STATE_FILE" ]; then
             source "$STATE_FILE" 2>/dev/null || true
-        elif [ -f "$BACKUP_STATE" ]; then
-            source "$BACKUP_STATE" 2>/dev/null || true
+        elif [ -f "$FALLBACK_STATE" ]; then
+            source "$FALLBACK_STATE" 2>/dev/null || true
         fi
 
         # Immediate root permission unlock & SELinux permissive
@@ -855,7 +858,7 @@ main() {
         configure_chroot_system
         setup_launchers
         verify_and_finish
-        rm -f "$STATE_FILE" "$BACKUP_STATE" 2>/dev/null || true
+        rm -f "$STATE_FILE" "$FALLBACK_STATE" 2>/dev/null || true
         exit 0
     elif [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
         # Running directly with root privileges
