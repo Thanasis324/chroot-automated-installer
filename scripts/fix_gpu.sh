@@ -40,15 +40,31 @@ print_divider() {
     echo -e "${YELLOW}${BOLD}${divider}${RESET}"
 }
 
-if command -v chroot-distro &> /dev/null; then
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+TERMUX_HOME="${TERMUX_HOME:-/data/data/com.termux/files/home}"
+export PREFIX
+export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
+export LD_LIBRARY_PATH="$PREFIX/lib:$LD_LIBRARY_PATH"
+
+# Dynamically resolve chroot-distro executable
+if command -v chroot-distro &>/dev/null; then
     DISTRO_CMD="chroot-distro"
+elif [ -x "$PREFIX/bin/chroot-distro" ]; then
+    DISTRO_CMD="$PREFIX/bin/chroot-distro"
+elif [ -x "$TERMUX_HOME/.local/bin/chroot-distro" ]; then
+    DISTRO_CMD="$TERMUX_HOME/.local/bin/chroot-distro"
+elif python3 -m chroot_distro --help &>/dev/null 2>&1; then
+    DISTRO_CMD="python3 -m chroot_distro"
 else
-    echo -e "${RED}[ERROR] chroot-distro is not installed. Please run setup.sh first.${RESET}"
-    exit 1
+    DISTRO_CMD="chroot-distro"
 fi
+export DISTRO_CMD
 
 SELECTED_DISTRO="$1"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
+if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ]; then
+    SCRIPT_DIR="${PREFIX}/Chroot-Automated-Installer/scripts"
+fi
 source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
 
 # If no distro was passed as an argument, auto-detect installed distros

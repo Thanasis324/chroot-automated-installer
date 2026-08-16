@@ -10,7 +10,16 @@ GREEN="\033[38;5;46m"
 YELLOW="\033[38;5;226m"
 RESET="\033[0m"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+TERMUX_HOME="${TERMUX_HOME:-/data/data/com.termux/files/home}"
+export PREFIX
+export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
+export LD_LIBRARY_PATH="$PREFIX/lib:$LD_LIBRARY_PATH"
+
+SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
+if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ]; then
+    SCRIPT_DIR="${PREFIX}/Chroot-Automated-Installer/scripts"
+fi
 source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
 
 SELECTED_DISTRO="${AUTOCHROOT_SELECTED_DISTRO:-archlinux}"
@@ -26,12 +35,19 @@ case "$RENDERER" in
     *) RENDERER_DESC="$RENDERER" ;;
 esac
 
-if command -v chroot-distro &> /dev/null; then
+# Dynamically resolve chroot-distro executable
+if command -v chroot-distro &>/dev/null; then
     DISTRO_CMD="chroot-distro"
+elif [ -x "$PREFIX/bin/chroot-distro" ]; then
+    DISTRO_CMD="$PREFIX/bin/chroot-distro"
+elif [ -x "$TERMUX_HOME/.local/bin/chroot-distro" ]; then
+    DISTRO_CMD="$TERMUX_HOME/.local/bin/chroot-distro"
+elif python3 -m chroot_distro --help &>/dev/null 2>&1; then
+    DISTRO_CMD="python3 -m chroot_distro"
 else
-    echo -e "${RED}[ERROR] chroot-distro is not installed. Please run setup.sh first.${RESET}"
-    exit 1
+    DISTRO_CMD="chroot-distro"
 fi
+export DISTRO_CMD
 
 # Ensure permissions on hardware GPU device nodes
 tsu -c "chmod 666 /dev/kgsl-3d0 /dev/dri/* /dev/mali* /dev/ion /dev/dma_heap/*" 2>/dev/null || \

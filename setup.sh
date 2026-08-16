@@ -16,12 +16,19 @@
 
 set -e
 
+# Guarantee Termux environment and binary paths are available under standard and root (tsu/su) contexts
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+TERMUX_HOME="${TERMUX_HOME:-/data/data/com.termux/files/home}"
+export PREFIX
+export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
+export LD_LIBRARY_PATH="$PREFIX/lib:$LD_LIBRARY_PATH"
+
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
 if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ] || [ ! -d "$SCRIPT_DIR/scripts" ]; then
-    if [ -d "${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer/scripts" ]; then
-        SCRIPT_DIR="${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer"
-    elif [ -d "$HOME/chroot-automated-installer/scripts" ]; then
-        SCRIPT_DIR="$HOME/chroot-automated-installer"
+    if [ -d "${PREFIX}/Chroot-Automated-Installer/scripts" ]; then
+        SCRIPT_DIR="${PREFIX}/Chroot-Automated-Installer"
+    elif [ -d "$TERMUX_HOME/chroot-automated-installer/scripts" ]; then
+        SCRIPT_DIR="$TERMUX_HOME/chroot-automated-installer"
     else
         SCRIPT_DIR="$PWD"
     fi
@@ -42,7 +49,19 @@ PURPLE="\033[38;5;129m"
 CYAN="\033[38;5;51m"
 WHITE="\033[38;5;231m"
 
-DISTRO_CMD="chroot-distro"
+# Dynamically resolve chroot-distro executable
+if command -v chroot-distro &>/dev/null; then
+    DISTRO_CMD="chroot-distro"
+elif [ -x "$PREFIX/bin/chroot-distro" ]; then
+    DISTRO_CMD="$PREFIX/bin/chroot-distro"
+elif [ -x "$TERMUX_HOME/.local/bin/chroot-distro" ]; then
+    DISTRO_CMD="$TERMUX_HOME/.local/bin/chroot-distro"
+elif python3 -m chroot_distro --help &>/dev/null 2>&1; then
+    DISTRO_CMD="python3 -m chroot_distro"
+else
+    DISTRO_CMD="chroot-distro"
+fi
+export DISTRO_CMD
 
 # --- Helper Functions ---
 print_banner() {
@@ -248,7 +267,7 @@ check_and_elevate_root() {
 
     set +e
     if command -v tsu &>/dev/null; then
-        tsu -c "CALLER_PWD='$CALLER_PWD' bash '$SCRIPT_PATH' --elevated $*"
+        tsu -c "export PREFIX='$PREFIX'; export TERMUX_HOME='$TERMUX_HOME'; export PATH='$PATH'; export CALLER_PWD='$CALLER_PWD'; bash '$SCRIPT_PATH' --elevated $*"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
@@ -256,7 +275,7 @@ check_and_elevate_root() {
     fi
 
     if command -v su &>/dev/null; then
-        su -c "CALLER_PWD='$CALLER_PWD' bash '$SCRIPT_PATH' --elevated $*"
+        su -c "export PREFIX='$PREFIX'; export TERMUX_HOME='$TERMUX_HOME'; export PATH='$PATH'; export CALLER_PWD='$CALLER_PWD'; bash '$SCRIPT_PATH' --elevated $*"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
