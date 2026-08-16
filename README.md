@@ -4,11 +4,11 @@ An automated, touch-optimized, and graphically appealing installation script for
 
 ---
 
-> [!IMPORTANT]
-> ### 📱 Supported Hardware Architecture: `arm64` (aarch64)
-> - This installer and its high-performance driver stacks are built and optimized exclusively for **64-bit ARM (`arm64` / `aarch64`)** devices.
-> - While other architectures (such as `armhf`, `arm32`, or `x86_64`) may partially boot through distribution fallback packages and GL4ES source compilation, they are **NOT officially supported**.
-> - **Please do NOT report bug issues or compatibility failures resulting from non-arm64 package architectures.**
+> [!NOTE]
+> ### 📱 Hardware & Architecture Compatibility
+> - **Primary Target**: **64-bit ARM (`arm64` / `aarch64`)** is recommended for modern Turnip Vulkan and Mesa driver pipelines.
+> - **32-bit ARM (`armhf` / `arm32`) & Legacy Support**: Devices running in 32-bit mode (such as Adreno 5xx devices forced into 32-bit userland by OEMs, or older Mali/Kernel 3.x devices) are supported via distribution Mesa packages and standalone GL4ES translation.
+> - **Bug Reports Welcome**: If you run into issues on 32-bit, Adreno 5xx, or legacy devices, please open an issue so we can continue expanding device compatibility!
 
 ---
 
@@ -24,7 +24,6 @@ An automated, touch-optimized, and graphically appealing installation script for
 ## 🚀 How to Run in Termux
 
 ### Prerequisites
-- **64-bit ARM Android Device (`arm64` / `aarch64`)**
 - **Termux** app installed. (Download the latest release from [F-Droid](https://f-droid.org/packages/com.termux/) or [GitHub](https://github.com/termux/termux-app/releases))
 - **Termux:X11** app installed. (Download the latest nightly release from [GitHub](https://github.com/termux/termux-x11/releases/tag/nightly))
 - **Rooted Device** (Required for `chroot-distro`). *Supports [Magisk](https://topjohnwu.github.io/Magisk/) and [KernelSU](https://kernelsu.org/). Root privilege escalation automatically falls back across `sudo`, `tsu`, and native `su`.*
@@ -155,8 +154,8 @@ autochroot update -d
 * **Cause**: Soft reboots (SystemUI or SurfaceFlinger crash) leave kernel chroot mounts orphaned in Android's namespace.
 * **Fix**: Perform a full hardware reboot of your Android device to cleanly flush all mount points.
 
-**2. Non-ARM64 / 32-bit Hardware Incompatibility**
-* Upstream container Mesa builds are strictly 64-bit (`arm64`). On 32-bit (`armhf`) devices, standard distribution Mesa packages and GL4ES source compilation are used as fallback.
+**2. 32-Bit ARM (`armhf`) & OEM-Constrained Devices (e.g. Adreno 5xx)**
+* Devices with 32-bit userlands (such as budget Samsung models running 32-bit Android on 64-bit hardware, or Adreno 5xx chips) automatically fall back to standard distribution Mesa packages and standalone GL4ES compilation. If you encounter any bugs on these setups, please report them!
 
 ---
 
