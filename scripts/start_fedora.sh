@@ -67,10 +67,10 @@ while pgrep -f termux-x11 >/dev/null 2>&1 && [ $HALT_ATTEMPTS -lt $MAX_ATTEMPTS 
 done
 
 PREFIX_TMP="${PREFIX:-/data/data/com.termux/files/usr}/tmp"
-mkdir -p "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test
-chmod 1777 "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test 2>/dev/null || true
+export TMPDIR="$PREFIX_TMP"
+mkdir -p "$PREFIX_TMP/.X11-unix"
+chmod 1777 "$PREFIX_TMP/.X11-unix" 2>/dev/null || true
 rm -f "$PREFIX_TMP/.X0-lock" "$PREFIX_TMP/.X11-unix/X0-lock" "$PREFIX_TMP/.X11-unix/X0" 2>/dev/null || true
-rm -f /tmp/.X0-lock /tmp/.X11-unix/X0-lock /tmp/.X11-unix/X0 2>/dev/null || true
 
 echo -e "${CYAN}${BOLD}Launching Termux:X11 Android App...${RESET}"
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 2>/dev/null || true
@@ -80,13 +80,16 @@ sleep 1
 if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
     echo -e "${CYAN}${BOLD}Starting VirGL Rendering Server...${RESET}"
     if ! pgrep -f "virgl_test_server" >/dev/null 2>&1; then
-        rm -f "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test 2>/dev/null || true
+        rm -rf "$PREFIX_TMP/.virgl_test" 2>/dev/null || true
         if command -v virgl_test_server_android >/dev/null 2>&1; then
             virgl_test_server_android >/dev/null 2>&1 &
         elif command -v virgl_test_server >/dev/null 2>&1; then
             virgl_test_server --use-gles >/dev/null 2>&1 &
         fi
-        sleep 1
+        for i in {1..20}; do
+            [ -e "$PREFIX_TMP/.virgl_test" ] && break
+            sleep 0.1
+        done
     fi
 else
     echo -e "${CYAN}${BOLD}Active Graphics Backend:${RESET} ${GREEN}${RENDERER_DESC}${RESET}"
@@ -118,6 +121,9 @@ $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
     if [ -x /usr/local/bin/termux-udevd ] && ! pgrep -f termux-udevd >/dev/null 2>&1; then
         /usr/local/bin/termux-udevd >/dev/null 2>&1 &
     fi
+    rm -rf /tmp/.virgl_test 2>/dev/null || true
+    touch /tmp/.virgl_test 2>/dev/null || true
+    chmod 777 /tmp/.virgl_test 2>/dev/null || true
 "
 
 echo -e "${GREEN}${BOLD}Launching ${SELECTED_DISTRO^^} Touch Desktop session for user: ${YELLOW}$CHROOT_USER${GREEN}...${RESET}"
@@ -126,7 +132,6 @@ echo ""
 if [ "$DISTRO_CMD" = "chroot-distro" ]; then
     BIND_ARGS="--bind $PREFIX_TMP/.X11-unix:/tmp/.X11-unix"
     if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
-        mkdir -p "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test 2>/dev/null || true
         BIND_ARGS="$BIND_ARGS --bind $PREFIX_TMP/.virgl_test:/tmp/.virgl_test"
     fi
     CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER $BIND_ARGS -- bash -c"

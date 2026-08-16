@@ -462,8 +462,9 @@ print_divider
 print_centered "${YELLOW}${BOLD}Verifying Hardware Acceleration...${RESET}"
 
 PREFIX_TMP="${PREFIX:-/data/data/com.termux/files/usr}/tmp"
-mkdir -p "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix
-chmod 1777 "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix 2>/dev/null || true
+export TMPDIR="$PREFIX_TMP"
+mkdir -p "$PREFIX_TMP/.X11-unix"
+chmod 1777 "$PREFIX_TMP/.X11-unix" 2>/dev/null || true
 
 # Start a headless, invisible test display server
 export DISPLAY=:99
@@ -474,16 +475,23 @@ if command -v termux-x11 &> /dev/null; then
 fi
 
 if [ "$driver_choice" = "3" ] || [ "$driver_choice" = "5" ]; then
-    mkdir -p "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test 2>/dev/null || true
-    chmod 1777 "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test 2>/dev/null || true
+    rm -rf "$PREFIX_TMP/.virgl_test" 2>/dev/null || true
     if ! pgrep -f virgl_test_server >/dev/null 2>&1; then
         if command -v virgl_test_server_android >/dev/null 2>&1; then
             virgl_test_server_android >/dev/null 2>&1 &
         elif command -v virgl_test_server >/dev/null 2>&1; then
             virgl_test_server --use-gles >/dev/null 2>&1 &
         fi
-        sleep 1
+        for i in {1..20}; do
+            [ -e "$PREFIX_TMP/.virgl_test" ] && break
+            sleep 0.1
+        done
     fi
+    $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
+        rm -rf /tmp/.virgl_test 2>/dev/null || true
+        touch /tmp/.virgl_test 2>/dev/null || true
+        chmod 777 /tmp/.virgl_test 2>/dev/null || true
+    " 2>/dev/null || true
 fi
 
 VERIFY_BINDS="--bind $PREFIX_TMP/.X11-unix:/tmp/.X11-unix"
