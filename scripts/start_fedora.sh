@@ -67,8 +67,8 @@ while pgrep -f termux-x11 >/dev/null 2>&1 && [ $HALT_ATTEMPTS -lt $MAX_ATTEMPTS 
 done
 
 PREFIX_TMP="${PREFIX:-/data/data/com.termux/files/usr}/tmp"
-mkdir -p "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix
-chmod 1777 "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix 2>/dev/null || true
+mkdir -p "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test
+chmod 1777 "$PREFIX_TMP/.X11-unix" /tmp/.X11-unix "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test 2>/dev/null || true
 rm -f "$PREFIX_TMP/.X0-lock" "$PREFIX_TMP/.X11-unix/X0-lock" "$PREFIX_TMP/.X11-unix/X0" 2>/dev/null || true
 rm -f /tmp/.X0-lock /tmp/.X11-unix/X0-lock /tmp/.X11-unix/X0 2>/dev/null || true
 
@@ -79,10 +79,14 @@ sleep 1
 
 if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
     echo -e "${CYAN}${BOLD}Starting VirGL Rendering Server...${RESET}"
-    if command -v virgl_test_server >/dev/null 2>&1; then
-        if ! pgrep -x virgl_test_server >/dev/null 2>&1; then
-            virgl_test_server --use-egl-surfaceless >/dev/null 2>&1 &
+    if ! pgrep -f "virgl_test_server" >/dev/null 2>&1; then
+        rm -f "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test 2>/dev/null || true
+        if command -v virgl_test_server_android >/dev/null 2>&1; then
+            virgl_test_server_android >/dev/null 2>&1 &
+        elif command -v virgl_test_server >/dev/null 2>&1; then
+            virgl_test_server --use-gles >/dev/null 2>&1 &
         fi
+        sleep 1
     fi
 else
     echo -e "${CYAN}${BOLD}Active Graphics Backend:${RESET} ${GREEN}${RENDERER_DESC}${RESET}"
@@ -106,6 +110,7 @@ echo -e "${CYAN}${BOLD}Ensuring System D-Bus daemon is active...${RESET}"
 $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
     mkdir -p /run/dbus /var/run/dbus
     rm -f /run/dbus/pid /var/run/dbus/pid /run/dbus/system_bus_socket /var/run/dbus/system_bus_socket 2>/dev/null
+    chmod 1777 /dev/shm 2>/dev/null || true
     dbus-uuidgen --ensure 2>/dev/null || true
     if ! pgrep -f 'dbus-daemon.*system' >/dev/null 2>&1 || [ ! -S /run/dbus/system_bus_socket ]; then
         dbus-daemon --system --fork 2>/dev/null || service dbus start 2>/dev/null || true
@@ -119,7 +124,12 @@ echo -e "${GREEN}${BOLD}Launching ${SELECTED_DISTRO^^} Touch Desktop session for
 echo ""
 
 if [ "$DISTRO_CMD" = "chroot-distro" ]; then
-    CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix --bind /data/data/com.termux/files/usr/tmp/.virgl_test:/tmp/.virgl_test -- bash -c"
+    BIND_ARGS="--bind $PREFIX_TMP/.X11-unix:/tmp/.X11-unix"
+    if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
+        mkdir -p "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test 2>/dev/null || true
+        BIND_ARGS="$BIND_ARGS --bind $PREFIX_TMP/.virgl_test:/tmp/.virgl_test"
+    fi
+    CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER $BIND_ARGS -- bash -c"
 else
     CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- shared-tmp -- bash -c"
 fi
@@ -144,12 +154,16 @@ $CMD_PREFIX "
         dbus-launch gsettings set org.onboard.window.portrait dock-expand true 2>/dev/null || true
     fi
     
-    if command -v dbus-run-session >/dev/null 2>&1; then
-        dbus-run-session -- xfce4-session || dbus-run-session -- startxfce4
-    elif command -v dbus-launch >/dev/null 2>&1; then
-        dbus-launch --exit-with-session xfce4-session || dbus-launch --exit-with-session startxfce4
+    if command -v xfce4-session >/dev/null 2>&1; then
+        if command -v dbus-run-session >/dev/null 2>&1; then
+            dbus-run-session -- xfce4-session
+        elif command -v dbus-launch >/dev/null 2>&1; then
+            dbus-launch --exit-with-session xfce4-session
+        else
+            xfce4-session
+        fi
     else
-        xfce4-session || startxfce4
+        startxfce4
     fi
     
     # Clean up the background gamepad daemon when the desktop session ends
