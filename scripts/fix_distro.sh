@@ -142,6 +142,67 @@ elif [ -f "$HOME/.${SELECTED_DISTRO}_user" ]; then
 elif [ -f "/data/data/com.termux/files/home/.${SELECTED_DISTRO}_user" ]; then
     SAVED_USER=$(cat "/data/data/com.termux/files/home/.${SELECTED_DISTRO}_user" | tr -d '\r\n')
 fi
+[ -z "$SAVED_USER" ] && SAVED_USER="user"
+
+# Interactive Repair Menu
+echo ""
+print_divider
+print_centered "${CYAN}${BOLD}DISTRO REPAIR CONFIGURATION (${SELECTED_DISTRO^^})${RESET}"
+print_divider
+echo ""
+
+read -rp "$(echo -e "${CYAN}1. Reinstall and update all core packages? [Y/n]: ${RESET}")" PKG_PROMPT
+if [[ "${PKG_PROMPT,,}" == "n"* ]]; then
+    RUN_PKGS="no"
+else
+    RUN_PKGS="yes"
+fi
+
+read -rp "$(echo -e "${CYAN}2. Rebuild X11, Display & Audio environment configs? [Y/n]: ${RESET}")" ENV_PROMPT
+if [[ "${ENV_PROMPT,,}" == "n"* ]]; then
+    RUN_ENV="no"
+else
+    RUN_ENV="yes"
+fi
+
+read -rp "$(echo -e "${CYAN}3. Reconfigure user account, password & sudo? [y/N]: ${RESET}")" USER_PROMPT
+if [[ "${USER_PROMPT,,}" == "y"* ]]; then
+    RUN_USER="yes"
+    echo ""
+    read -rp "$(echo -e "${CYAN}Enter username to configure [current: ${YELLOW}${SAVED_USER}${CYAN}]: ${RESET}")" INPUT_USER
+    TARGET_USER="${INPUT_USER:-$SAVED_USER}"
+    
+    while true; do
+        read -rsp "$(echo -e "${CYAN}Enter new password for '${TARGET_USER}': ${RESET}")" CHROOT_PASS
+        echo ""
+        read -rsp "$(echo -e "${CYAN}Confirm password: ${RESET}")" CHROOT_PASS_CONFIRM
+        echo ""
+        if [ "$CHROOT_PASS" = "$CHROOT_PASS_CONFIRM" ]; then
+            if [ -z "$CHROOT_PASS" ]; then
+                CHROOT_PASS="password"
+            fi
+            break
+        else
+            echo -e "${RED}[ERROR] Passwords do not match. Please try again.${RESET}"
+        fi
+    done
+
+    read -rp "$(echo -e "${CYAN}Enable passwordless sudo? [Y/n]: ${RESET}")" SUDO_PROMPT
+    if [[ "${SUDO_PROMPT,,}" == "n"* ]]; then
+        SUDO_CHOICE="no"
+    else
+        SUDO_CHOICE="yes"
+    fi
+    
+    # Save the updated username
+    echo "$TARGET_USER" > "$HOME/.${SELECTED_DISTRO}_user"
+    autochroot_save_user "$SELECTED_DISTRO" "$TARGET_USER" 2>/dev/null || true
+else
+    RUN_USER="no"
+    TARGET_USER="$SAVED_USER"
+    CHROOT_PASS=""
+    SUDO_CHOICE=""
+fi
 
 SETUP_B64=$(base64 -w0 "$DISTRO_SETUP_SCRIPT" 2>/dev/null || base64 "$DISTRO_SETUP_SCRIPT" | tr -d '\r\n')
 
@@ -151,11 +212,12 @@ if [ -d "$ROOTFS_DIR/tmp" ] && [ -f "$SCRIPT_DIR/mesa-debs-trixie.zip" ]; then
     cp "$SCRIPT_DIR/mesa-debs-trixie.zip" "$ROOTFS_DIR/tmp/mesa-debs-trixie.zip" 2>/dev/null || true
 fi
 
+echo -e "\n${YELLOW}${BOLD}=== Applying Distro Repair for ${SELECTED_DISTRO^^} ===${RESET}"
 $DISTRO_CMD login "$SELECTED_DISTRO" --user root -- bash -c "
     export SETUP_MODE='$SETUP_MODE'
     echo '$SETUP_B64' | base64 -d > /tmp/distro_setup.sh
     chmod +x /tmp/distro_setup.sh
-    bash /tmp/distro_setup.sh '$SAVED_USER' '' '$IS_ADRENO' '$ADRENO_SERIES' '$EFFECTIVE_FAMILY' ''
+    bash /tmp/distro_setup.sh '$TARGET_USER' '$CHROOT_PASS' '$IS_ADRENO' '$ADRENO_SERIES' '$EFFECTIVE_FAMILY' '$SUDO_CHOICE' '$RUN_PKGS' '$RUN_ENV' '$RUN_USER'
 "
 
 log_success "${SELECTED_DISTRO^^} packages and configurations have been successfully repaired!"

@@ -195,17 +195,26 @@ if [ "$plat_choice" == "1" ]; then
 elif [[ "$plat_choice" == "2" || "$plat_choice" == "3" || "$plat_choice" == "4" ]]; then
     echo ""
     print_divider
-        print_centered "${YELLOW}Device has Multiple Experimental Recommended Modes${RESET}"
+        print_centered "${YELLOW}Device Graphics Acceleration Options${RESET}"
     echo ""
-        print_centered "  ${CYAN}1)${RESET} GL4ES (Recommended Experimental)          "
-        print_centered "  ${CYAN}2)${RESET} VirGL (Recommended Fallback)            "
-        print_centered "  ${CYAN}3)${RESET} LLVMpipe (Pure CPU Software Rendering)  "
+        print_centered "  ${CYAN}1)${RESET} GL4ES Standalone (OpenGL to GLES Translation for Legacy / Kernel 3.x)"
+        print_centered "  ${CYAN}2)${RESET} VirGL Hardware Passthrough (Host Virtualization - Kernel >= 4.4)     "
+        print_centered "  ${CYAN}3)${RESET} LLVMpipe (Pure CPU Software Rendering Fallback)                     "
     print_divider
     echo ""
     read -rp "Select Driver (1-3): " drv_choice
     
     case "$drv_choice" in
-        1) driver_choice="5" ;; # GL4ES over VirGL
+        1)
+            driver_choice="5" # GL4ES Standalone
+            echo ""
+            read -rp "$(echo -e "${CYAN}Compile latest GL4ES from source? (Recommended) [Y/n]: ${RESET}")" COMPILE_GL4ES_PROMPT
+            if [[ "${COMPILE_GL4ES_PROMPT,,}" == "n"* ]]; then
+                DO_COMPILE_GL4ES="no"
+            else
+                DO_COMPILE_GL4ES="yes"
+            fi
+            ;;
         2) driver_choice="3" ;; # VirGL
         3) driver_choice="4" ;; # LLVMpipe
         *) echo "Invalid selection."; exit 1 ;;
@@ -256,13 +265,38 @@ case "$driver_choice" in
                 (cd /usr/lib/aarch64-linux-gnu && ln -sf $(basename $(ls libdisplay-info.so.* | grep -v "\.so\.2$" | head -n 1)) libdisplay-info.so.2)
             fi
             
+            # Auto-detect hardware architecture
+            RAW_ARCH=$(uname -m)
+            case "$RAW_ARCH" in
+                aarch64|arm64)
+                    ARCH_SUFFIX="arm64"
+                    ARCH_ARCH="arm64"
+                    ;;
+                armv7*|armv8l|armhf|arm)
+                    ARCH_SUFFIX="armhf"
+                    ARCH_ARCH="arm"
+                    ;;
+                x86_64|amd64)
+                    ARCH_SUFFIX="x86_64"
+                    ARCH_ARCH="x86_64"
+                    ;;
+                i*86|x86)
+                    ARCH_SUFFIX="x86"
+                    ARCH_ARCH="x86"
+                    ;;
+                *)
+                    ARCH_SUFFIX="$RAW_ARCH"
+                    ARCH_ARCH="$RAW_ARCH"
+                    ;;
+            esac
+
             IS_UBUNTU=0
             if [ -f /etc/os-release ] && grep -qi "ubuntu" /etc/os-release; then
                 IS_UBUNTU=1
             fi
             
-            if [ "$1" = "debian" ] && [ "$IS_UBUNTU" -eq 0 ]; then
-                echo "Downloading custom Debian Mesa bundle..."
+            if [ "$1" = "debian" ] && [ "$IS_UBUNTU" -eq 0 ] && [ "$ARCH_SUFFIX" = "arm64" ]; then
+                echo "Downloading custom Debian Mesa bundle for $ARCH_SUFFIX..."
                 cd /tmp
                 wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip || curl -sL -o mesa-debs-trixie.zip https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip
                 
@@ -276,25 +310,26 @@ case "$driver_choice" in
                     rm -f mesa-debs-trixie.zip
                 fi
             else
+                echo "Auto-detected architecture: $RAW_ARCH ($ARCH_SUFFIX)"
                 if [ "$1" = "fedora" ]; then
                     FEDORA_VER=$(grep -oP "(?<=^VERSION_ID=).+" /etc/os-release | tr -d \")
-                    LFDEVS_PATTERN="fedora_${FEDORA_VER}_arm64\.tar\.gz"
+                    LFDEVS_PATTERN="fedora_${FEDORA_VER}_${ARCH_SUFFIX}\.tar\.gz"
                 elif [ "$1" = "archlinux" ]; then
-                    LFDEVS_PATTERN="archlinux_arm64\.tar"
+                    LFDEVS_PATTERN="archlinux_${ARCH_ARCH}\.tar"
                 elif [ "$IS_UBUNTU" -eq 1 ] || grep -qi "ubuntu" /etc/os-release 2>/dev/null; then
                     UBUNTU_CODENAME=$(grep -oP "(?<=^VERSION_CODENAME=).+" /etc/os-release | tr -d \")
                     [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME=$(grep -oP "(?<=^UBUNTU_CODENAME=).+" /etc/os-release | tr -d \")
                     [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME="noble"
-                    LFDEVS_PATTERN="ubuntu_${UBUNTU_CODENAME}_arm64\.tar\.gz"
+                    LFDEVS_PATTERN="ubuntu_${UBUNTU_CODENAME}_${ARCH_SUFFIX}\.tar\.gz"
                 else
-                    LFDEVS_PATTERN="debian_trixie_arm64\.tar\.gz"
+                    LFDEVS_PATTERN="debian_.*_${ARCH_SUFFIX}\.tar\.gz"
                 fi
                 # Bypass strict API rate limits by scraping the expanded_assets HTML fragment directly
                 LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
                 TAG=$(echo "$LATEST_URL" | awk -F "/" "{print \$NF}")
                 DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
-                if [ -z "$DOWNLOAD_URL" ] && { [ "$IS_UBUNTU" -eq 1 ] || grep -qi "ubuntu" /etc/os-release 2>/dev/null; }; then
-                    DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*ubuntu_[^\"]*_arm64\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
+                if [ -z "$DOWNLOAD_URL" ]; then
+                    DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*${ARCH_SUFFIX}\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
                 fi
                 if [ -n "$DOWNLOAD_URL" ]; then
                     DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
@@ -317,8 +352,8 @@ case "$driver_choice" in
                     fi
                     rm -f mesa-turnip.tar.gz mesa-turnip.tar
                 else
-                    echo "[ERROR] Failed to fetch lfdevs download URL! You might be rate-limited by GitHub API."
-                    echo "Skipping driver download, but dependencies have been repaired."
+                    echo "[INFO] No prebuilt lfdevs package matching $ARCH_SUFFIX found (or API rate limited)."
+                    echo "Using standard distribution Mesa and GLES libraries."
                 fi
             fi
         ' -- "$SELECTED_DISTRO" "$driver_choice"
@@ -365,6 +400,15 @@ case "$driver_choice" in
                     echo 'chmod 700 $XDG_RUNTIME_DIR' >> /etc/profile.d/termux_env.sh
                 fi
 
+                # Create helper runner script for Zink
+                cat << 'RUNEOF' > /usr/local/bin/zink-run
+#!/usr/bin/env bash
+export GALLIUM_DRIVER=zink
+export MESA_LOADER_DRIVER_OVERRIDE=zink
+export ZINK_DESCRIPTORS=lazy
+exec "$@"
+RUNEOF
+                chmod +x /usr/local/bin/zink-run
             "
         else
             log_info "Configuring environment for Freedreno..."
@@ -397,6 +441,14 @@ case "$driver_choice" in
                 sed -i 's/MESA_LOADER_DRIVER_OVERRIDE=.*/MESA_LOADER_DRIVER_OVERRIDE=virgl/g' /etc/profile.d/termux_env.sh 2>/dev/null || true
             fi
             sed -i '/export LIBGL_ALWAYS_SOFTWARE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
+
+            cat << 'RUNEOF' > /usr/local/bin/virgl-run
+#!/usr/bin/env bash
+export GALLIUM_DRIVER=virpipe
+export MESA_LOADER_DRIVER_OVERRIDE=virgl
+exec "$@"
+RUNEOF
+            chmod +x /usr/local/bin/virgl-run
         "
         ;;
     4)
@@ -418,10 +470,156 @@ case "$driver_choice" in
         "
         ;;
     5)
-        log_warn "GL4ES is experimental. It will use VirGL as its desktop backend."
-        $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
-            sed -i '/export GALLIUM_DRIVER/d;/export MESA_LOADER_DRIVER_OVERRIDE/d;/export LIBGL_ALWAYS_SOFTWARE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
-        "
+        log_info "Configuring GL4ES Standalone (OpenGL to OpenGLES translation engine)..."
+        $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c '
+            DISTRO_NAME="$1"
+            DO_COMPILE="$2"
+
+            sed -i "/export GALLIUM_DRIVER/d;/export MESA_LOADER_DRIVER_OVERRIDE/d;/export LIBGL_ALWAYS_SOFTWARE/d;/export LIBGL_ES/d;/export LIBGL_GL/d;/export LIBGL_NOBANNER/d" /etc/profile.d/termux_env.sh 2>/dev/null || true
+            
+            # 1. Ensure core dependencies and GLES libraries are installed
+            if command -v apt-get >/dev/null 2>&1; then
+                apt-get update >/dev/null 2>&1
+                apt-get install -y libgl1-mesa-dri libgles2 libegl1 libgl1 xfce4 xfwm4 libdisplay-info-dev >/dev/null 2>&1 || true
+            elif command -v dnf >/dev/null 2>&1; then
+                dnf install -y mesa-libGL mesa-libEGL mesa-libGLES mesa-dri-drivers @xfce-desktop-environment libdisplay-info >/dev/null 2>&1 || true
+            elif command -v pacman >/dev/null 2>&1; then
+                pacman -Sy --noconfirm mesa libglvnd xfce4 xfwm4 libdisplay-info >/dev/null 2>&1 || true
+            fi
+
+            # 2. Install Mesa for Android Container
+            RAW_ARCH=$(uname -m)
+            case "$RAW_ARCH" in
+                aarch64|arm64)
+                    ARCH_SUFFIX="arm64"
+                    ARCH_ARCH="arm64"
+                    ;;
+                armv7*|armv8l|armhf|arm)
+                    ARCH_SUFFIX="armhf"
+                    ARCH_ARCH="arm"
+                    ;;
+                x86_64|amd64)
+                    ARCH_SUFFIX="x86_64"
+                    ARCH_ARCH="x86_64"
+                    ;;
+                i*86|x86)
+                    ARCH_SUFFIX="x86"
+                    ARCH_ARCH="x86"
+                    ;;
+                *)
+                    ARCH_SUFFIX="$RAW_ARCH"
+                    ARCH_ARCH="$RAW_ARCH"
+                    ;;
+            esac
+
+            IS_UBUNTU=0
+            if [ -f /etc/os-release ] && grep -qi "ubuntu" /etc/os-release; then
+                IS_UBUNTU=1
+            fi
+            
+            if [ "$DISTRO_NAME" = "debian" ] && [ "$IS_UBUNTU" -eq 0 ] && [ "$ARCH_SUFFIX" = "arm64" ]; then
+                echo "Downloading Mesa for Android container (Debian bundle for $ARCH_SUFFIX)..."
+                cd /tmp
+                wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip || curl -sL -o mesa-debs-trixie.zip https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip
+                if [ -f "mesa-debs-trixie.zip" ] && unzip -t mesa-debs-trixie.zip >/dev/null 2>&1; then
+                    echo "Installing container Mesa drivers..."
+                    unzip -q mesa-debs-trixie.zip
+                    apt-get install -y --no-install-recommends ./mesa_debs/*.deb || true
+                    rm -rf mesa-debs-trixie.zip mesa_debs
+                fi
+            else
+                echo "Auto-detected architecture: $RAW_ARCH ($ARCH_SUFFIX)"
+                if [ "$DISTRO_NAME" = "fedora" ]; then
+                    FEDORA_VER=$(grep -oP "(?<=^VERSION_ID=).+" /etc/os-release | tr -d \")
+                    LFDEVS_PATTERN="fedora_${FEDORA_VER}_${ARCH_SUFFIX}\.tar\.gz"
+                elif [ "$DISTRO_NAME" = "archlinux" ]; then
+                    LFDEVS_PATTERN="archlinux_${ARCH_ARCH}\.tar"
+                elif [ "$IS_UBUNTU" -eq 1 ] || grep -qi "ubuntu" /etc/os-release 2>/dev/null; then
+                    UBUNTU_CODENAME=$(grep -oP "(?<=^VERSION_CODENAME=).+" /etc/os-release | tr -d \")
+                    [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME=$(grep -oP "(?<=^UBUNTU_CODENAME=).+" /etc/os-release | tr -d \")
+                    [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME="noble"
+                    LFDEVS_PATTERN="ubuntu_${UBUNTU_CODENAME}_${ARCH_SUFFIX}\.tar\.gz"
+                else
+                    LFDEVS_PATTERN="debian_.*_${ARCH_SUFFIX}\.tar\.gz"
+                fi
+                LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
+                TAG=$(echo "$LATEST_URL" | awk -F "/" "{print \$NF}")
+                DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
+                if [ -z "$DOWNLOAD_URL" ]; then
+                    DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*${ARCH_SUFFIX}\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
+                fi
+                if [ -n "$DOWNLOAD_URL" ]; then
+                    DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
+                    cd /tmp
+                    wget -q -O mesa-container.tar.gz "$DOWNLOAD_URL" || curl -sL "$DOWNLOAD_URL" -o mesa-container.tar.gz
+                    if [ "$DISTRO_NAME" = "archlinux" ]; then
+                        mkdir -p /tmp/mesa-container
+                        tar -xf mesa-container.tar.gz -C /tmp/mesa-container/ 2>/dev/null || tar -xf mesa-container.tar -C /tmp/mesa-container/ 2>/dev/null
+                        pacman -U --noconfirm --overwrite "*" /tmp/mesa-container/*.pkg.tar.xz >/dev/null 2>&1 || true
+                        rm -rf /tmp/mesa-container
+                    else
+                        tar -zxf mesa-container.tar.gz -C / >/dev/null 2>&1 || true
+                        ldconfig 2>/dev/null || true
+                    fi
+                    rm -f mesa-container.tar.gz mesa-container.tar
+                fi
+            fi
+
+            # 3. Compile or configure GL4ES
+            if [ "$DO_COMPILE" = "yes" ]; then
+                echo "Installing build tools and compiling GL4ES from source (ptitSeb/gl4es)..."
+                if command -v apt-get >/dev/null 2>&1; then
+                    apt-get install -y build-essential git cmake gcc g++ make libx11-dev libxext-dev libegl1-mesa-dev libgles2-mesa-dev libgl1-mesa-dev >/dev/null 2>&1 || true
+                elif command -v dnf >/dev/null 2>&1; then
+                    dnf install -y gcc gcc-c++ make git cmake libX11-devel libXext-devel mesa-libEGL-devel mesa-libGLES-devel mesa-libGL-devel >/dev/null 2>&1 || true
+                elif command -v pacman >/dev/null 2>&1; then
+                    pacman -Sy --noconfirm base-devel git cmake libx11 libxext mesa >/dev/null 2>&1 || true
+                fi
+
+                cd /tmp
+                rm -rf gl4es
+                if git clone --depth 1 https://github.com/ptitSeb/gl4es.git; then
+                    cd gl4es
+                    mkdir -p build && cd build
+                    cmake .. -DCMAKE_BUILD_TYPE=Release -DDEFAULT_ES=2 -DNOX11=OFF -DNOEGL=OFF >/dev/null 2>&1 || cmake .. -DCMAKE_BUILD_TYPE=Release >/dev/null 2>&1
+                    make -j$(nproc 2>/dev/null || echo 2) >/dev/null 2>&1
+                    mkdir -p /usr/local/lib/gl4es /usr/local/lib
+                    cp -f lib/libGL.so.1 /usr/local/lib/gl4es/ 2>/dev/null || true
+                    cp -f lib/libGL.so.1 /usr/local/lib/ 2>/dev/null || true
+                    ln -sf /usr/local/lib/gl4es/libGL.so.1 /usr/local/lib/gl4es/libGL.so 2>/dev/null || true
+                    ln -sf /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so 2>/dev/null || true
+                    ldconfig 2>/dev/null || true
+                    cd /tmp && rm -rf gl4es
+                fi
+            else
+                echo "Skipping GL4ES source compilation. Using existing/system OpenGL libraries..."
+                mkdir -p /usr/local/lib/gl4es /usr/local/lib
+                if [ -f /usr/local/lib/gl4es/libGL.so.1 ]; then
+                    cp -f /usr/local/lib/gl4es/libGL.so.1 /usr/local/lib/ 2>/dev/null || true
+                    ln -sf /usr/local/lib/libGL.so.1 /usr/local/lib/libGL.so 2>/dev/null || true
+                fi
+            fi
+
+            # 4. Helper runner script gl4es-run
+            cat << "RUNEOF" > /usr/local/bin/gl4es-run
+#!/usr/bin/env bash
+export LIBGL_ES=2
+export LIBGL_GL=21
+export LIBGL_NOBANNER=1
+export LD_LIBRARY_PATH=/usr/local/lib/gl4es:/usr/local/lib:$LD_LIBRARY_PATH
+exec "$@"
+RUNEOF
+            chmod +x /usr/local/bin/gl4es-run
+
+            # 5. Export GL4ES Standalone translation parameters
+            cat << "ENVEOF" >> /etc/profile.d/termux_env.sh
+# GL4ES Standalone Hardware Translation
+export LIBGL_ES=2
+export LIBGL_GL=21
+export LIBGL_NOBANNER=1
+export LD_LIBRARY_PATH=/usr/local/lib/gl4es:/usr/local/lib:$LD_LIBRARY_PATH
+ENVEOF
+        ' -- "$SELECTED_DISTRO" "$DO_COMPILE_GL4ES"
         ;;
     *)
         echo -e "${RED}Invalid choice. Exiting.${RESET}"
@@ -454,33 +652,36 @@ if command -v termux-x11 &> /dev/null; then
 fi
 
 # Run glxinfo inside the container to test OpenGL/Vulkan acceleration
-$DISTRO_CMD login $SELECTED_DISTRO --user root --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix -- bash -c "
+$DISTRO_CMD login $SELECTED_DISTRO --user root --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix -- bash -c '
+    DRIVER_CHOICE="$1"
     if command -v glxinfo >/dev/null 2>&1; then
         export DISPLAY=:99
-        TEST_CMD=\"glxinfo -B\"
-        if [ \"$driver_choice\" = \"1\" ]; then
-            TEST_CMD=\"GALLIUM_DRIVER=zink MESA_LOADER_DRIVER_OVERRIDE=zink glxinfo -B\"
-        elif [ \"$driver_choice\" = \"2\" ]; then
-            TEST_CMD=\"GALLIUM_DRIVER=freedreno MESA_LOADER_DRIVER_OVERRIDE=freedreno glxinfo -B\"
-        elif [ \"$driver_choice\" = \"3\" ]; then
-            TEST_CMD=\"GALLIUM_DRIVER=virpipe glxinfo -B\"
+        TEST_CMD="glxinfo -B"
+        if [ "$DRIVER_CHOICE" = "1" ]; then
+            TEST_CMD="GALLIUM_DRIVER=zink MESA_LOADER_DRIVER_OVERRIDE=zink glxinfo -B"
+        elif [ "$DRIVER_CHOICE" = "2" ]; then
+            TEST_CMD="GALLIUM_DRIVER=freedreno MESA_LOADER_DRIVER_OVERRIDE=freedreno glxinfo -B"
+        elif [ "$DRIVER_CHOICE" = "3" ]; then
+            TEST_CMD="GALLIUM_DRIVER=virpipe glxinfo -B"
+        elif [ "$DRIVER_CHOICE" = "5" ]; then
+            TEST_CMD="LD_LIBRARY_PATH=/usr/local/lib/gl4es:/usr/local/lib:$LD_LIBRARY_PATH LIBGL_ES=2 LIBGL_GL=21 LIBGL_NOBANNER=1 glxinfo -B"
         fi
         
-        GL_OUTPUT=\$(eval \"\$TEST_CMD\" 2>/dev/null || true)
-        if echo \"\$GL_OUTPUT\" | grep -qiE 'renderer string:.*(zink|freedreno|virgl|turnip|adreno|mali)'; then
-            DRIVER=\$(echo \"\$GL_OUTPUT\" | grep 'OpenGL renderer string' | cut -d ':' -f 2 | sed 's/^[[:space:]]*//')
-            echo -e \"\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware acceleration VERIFIED! Active Driver: \033[38;5;51m\$DRIVER\033[0m\n\"
-        elif echo \"\$GL_OUTPUT\" | grep -q 'Accelerated: yes'; then
-            DRIVER=\$(echo \"\$GL_OUTPUT\" | grep 'OpenGL renderer string' | cut -d ':' -f 2 | sed 's/^[[:space:]]*//')
-            echo -e \"\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware acceleration VERIFIED! Active Driver: \033[38;5;51m\$DRIVER\033[0m\n\"
+        GL_OUTPUT=$(eval "$TEST_CMD" 2>/dev/null || true)
+        if echo "$GL_OUTPUT" | grep -qiE "renderer string:.*(zink|freedreno|virgl|turnip|adreno|mali|gl4es|gles|opengl es)"; then
+            DRIVER=$(echo "$GL_OUTPUT" | grep "OpenGL renderer string" | cut -d ":" -f 2 | sed "s/^[[:space:]]*//")
+            echo -e "\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware acceleration VERIFIED! Active Driver: \033[38;5;51m$DRIVER\033[0m\n"
+        elif echo "$GL_OUTPUT" | grep -q "Accelerated: yes"; then
+            DRIVER=$(echo "$GL_OUTPUT" | grep "OpenGL renderer string" | cut -d ":" -f 2 | sed "s/^[[:space:]]*//")
+            echo -e "\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware acceleration VERIFIED! Active Driver: \033[38;5;51m$DRIVER\033[0m\n"
         else
-            echo -e \"\n\033[31m[ERROR] OpenGL failed to accelerate. Your device may require different settings or VirGL.\033[0m\n\"
-            echo \"\$GL_OUTPUT\" | grep 'OpenGL renderer string' || true
+            echo -e "\n\033[31m[ERROR] OpenGL failed to accelerate. Your device may require different settings or VirGL.\033[0m\n"
+            echo "$GL_OUTPUT" | grep "OpenGL renderer string" || true
         fi
     else
-        echo -e \"\n\033[38;5;226m[WARNING] glxinfo not installed. Skipping automatic verification.\033[0m\n\"
+        echo -e "\n\033[38;5;226m[WARNING] glxinfo not installed. Skipping automatic verification.\033[0m\n"
     fi
-"
+' -- "$driver_choice"
 
 # Shut down the test display server
 if [ -n "$TERMUX_X11_PID" ]; then

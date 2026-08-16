@@ -21,7 +21,7 @@ case "$RENDERER" in
     zink) RENDERER_DESC="Zink (Turnip Vulkan Acceleration)" ;;
     freedreno) RENDERER_DESC="Freedreno (Native OpenGL Acceleration)" ;;
     virgl) RENDERER_DESC="VirGL (Host Hardware Passthrough)" ;;
-    gl4es) RENDERER_DESC="GL4ES (OpenGL Translation over VirGL)" ;;
+    gl4es) RENDERER_DESC="GL4ES (Standalone OpenGL to GLES Translation)" ;;
     llvmpipe) RENDERER_DESC="LLVMpipe (CPU Software Rendering)" ;;
     *) RENDERER_DESC="$RENDERER" ;;
 esac
@@ -77,7 +77,7 @@ am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 2>/dev/null || t
 /system/bin/am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 2>/dev/null || true
 sleep 1
 
-if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
+if [ "$RENDERER" == "virgl" ]; then
     echo -e "${CYAN}${BOLD}Starting VirGL Rendering Server...${RESET}"
     if command -v virgl_test_server >/dev/null 2>&1; then
         if ! pgrep -x virgl_test_server >/dev/null 2>&1; then
@@ -118,8 +118,14 @@ $DISTRO_CMD login $SELECTED_DISTRO --user root -- bash -c "
 echo -e "${GREEN}${BOLD}Launching ${SELECTED_DISTRO^^} Touch Desktop session for user: ${YELLOW}$CHROOT_USER${GREEN}...${RESET}"
 echo ""
 
+BIND_OPTS="--bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix"
+if [ "$RENDERER" == "virgl" ]; then
+    mkdir -p "$PREFIX_TMP/.virgl_test" /tmp/.virgl_test 2>/dev/null || true
+    BIND_OPTS="$BIND_OPTS --bind /data/data/com.termux/files/usr/tmp/.virgl_test:/tmp/.virgl_test"
+fi
+
 if [ "$DISTRO_CMD" = "chroot-distro" ]; then
-    CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix --bind /data/data/com.termux/files/usr/tmp/.virgl_test:/tmp/.virgl_test -- bash -c"
+    CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER $BIND_OPTS -- bash -c"
 else
     CMD_PREFIX="$DISTRO_CMD login $SELECTED_DISTRO --user $CHROOT_USER -- shared-tmp -- bash -c"
 fi
@@ -172,12 +178,12 @@ if [ "$SHUTDOWN_REQUESTED" -eq 0 ] && { [ "$SESSION_EXIT_CODE" -ne 0 ] || [ "$SE
     echo ""
     echo -e "${YELLOW}${BOLD}[!] Desktop session exited unexpectedly or failed to launch.${RESET}"
     echo -e "${WHITE}If you experienced crashes, black screens, or graphics glitches:${RESET}"
-    echo -e "${CYAN}Run ${WHITE}autochroot config${CYAN} and select ${GREEN}'Fix / Update GPU Drivers'${CYAN} to choose another graphics backend (e.g., VirGL or LLVMpipe).${RESET}"
+    echo -e "${CYAN}Run ${WHITE}autochroot config${CYAN} and select ${GREEN}'Fix / Update GPU Drivers'${CYAN} to choose another graphics backend (e.g., VirGL, GL4ES, or LLVMpipe).${RESET}"
     echo ""
 fi
 
 # Instantly free graphics RAM by killing the display server when the user exits
 pkill -9 -f termux-x11 >/dev/null 2>&1 || true
-if [ "$RENDERER" == "virgl" ] || [ "$RENDERER" == "gl4es" ]; then
+if [ "$RENDERER" == "virgl" ]; then
     pkill -9 -x virgl_test_server >/dev/null 2>&1 || true
 fi

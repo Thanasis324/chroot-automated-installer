@@ -13,11 +13,11 @@ IS_ADRENO="${3:-false}"
 ADRENO_SERIES="${4:-A8XX}"
 DISTRO_NAME="${5:-debian}"
 SUDO_CHOICE="${6:-yes}"
+RUN_PKGS="${7:-${RUN_PKGS:-yes}}"
+RUN_ENV="${8:-${RUN_ENV:-yes}}"
+RUN_USER="${9:-${RUN_USER:-yes}}"
 
 SETUP_MODE="${SETUP_MODE:-true}"
-RUN_PKGS="yes"
-RUN_ENV="yes"
-RUN_USER="yes"
 
 BOLD="\033[1m"
 GREEN="\033[38;5;46m"
@@ -25,63 +25,6 @@ CYAN="\033[38;5;51m"
 YELLOW="\033[38;5;226m"
 WHITE="\033[38;5;231m"
 RESET="\033[0m"
-
-if [ "$SETUP_MODE" == "false" ]; then
-    echo ""
-    echo -e "${YELLOW}${BOLD}================================================================================"
-    echo -e "                   DISTRO CONFIGURATION & REPAIR MENU                           "
-    echo -e "================================================================================${RESET}"
-    echo -e "${WHITE}Select components to reconfigure / repair for ${CYAN}${BOLD}${DISTRO_NAME^^}${RESET}:${WHITE}"
-    echo ""
-    
-    read -rp "$(echo -e "${CYAN}1. Reinstall and update all core packages? [Y/n]: ${RESET}")" PKG_PROMPT
-    if [[ "${PKG_PROMPT,,}" == "n"* ]]; then
-        RUN_PKGS="no"
-    else
-        RUN_PKGS="yes"
-    fi
-    
-    read -rp "$(echo -e "${CYAN}2. Rebuild X11, Display & Audio environment configs? [Y/n]: ${RESET}")" ENV_PROMPT
-    if [[ "${ENV_PROMPT,,}" == "n"* ]]; then
-        RUN_ENV="no"
-    else
-        RUN_ENV="yes"
-    fi
-    
-    read -rp "$(echo -e "${CYAN}3. Reconfigure user accounts, passwords & sudo? [Y/n]: ${RESET}")" USER_PROMPT
-    if [[ "${USER_PROMPT,,}" == "n"* ]]; then
-        RUN_USER="no"
-    else
-        RUN_USER="yes"
-    fi
-    
-    if [ "$RUN_USER" == "yes" ]; then
-        echo ""
-        read -rp "$(echo -e "${CYAN}Please enter the username to configure (current: ${YELLOW}${USERNAME}${CYAN}): ${RESET}")" PROMPT_USER
-        if [ -n "$PROMPT_USER" ]; then
-            USERNAME="$PROMPT_USER"
-        fi
-        
-        read -rsp "$(echo -e "${CYAN}Enter new password for $USERNAME: ${RESET}")" PASSWORD
-        echo ""
-        if [ -z "$PASSWORD" ]; then
-            PASSWORD="password"
-        fi
-        
-        read -rp "$(echo -e "${CYAN}Enable passwordless sudo? [Y/n]: ${RESET}")" SUDO_PROMPT
-        if [[ "${SUDO_PROMPT,,}" == "n"* ]]; then
-            SUDO_CHOICE="no"
-        else
-            SUDO_CHOICE="yes"
-        fi
-    else
-        # If user setup is skipped, set default fallbacks so the variables exist
-        PASSWORD="password"
-        SUDO_CHOICE="no"
-    fi
-    echo -e "${YELLOW}${BOLD}================================================================================${RESET}"
-    echo ""
-fi
 
 echo -e "${CYAN}${BOLD}[${DISTRO_NAME^^} SETUP] Initializing environment configuration...${RESET}"
 
@@ -163,27 +106,31 @@ mkdir -p /run/dbus /var/run/dbus
 dbus-uuidgen --ensure 2>/dev/null || true
 
 # --- 3. Group Creation, User Setup & Android Hardware GID Mapping ---
-if [ "${RUN_USER:-yes}" = "yes" ]; then
-echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Setting up user '$USERNAME' with passwordless sudo & graphics permissions...${RESET}"
+echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Configuring user '$USERNAME', groups & permissions...${RESET}"
 
 # Ensure essential groups exist, including Android AID_GRAPHICS (GID 1003)
 groupadd -f sudo 2>/dev/null || true
 groupadd -f wheel 2>/dev/null || true
-groupadd -f video
-groupadd -f audio
-groupadd -f render
-groupadd -f input
+groupadd -f video 2>/dev/null || true
+groupadd -f audio 2>/dev/null || true
+groupadd -f render 2>/dev/null || true
+groupadd -f input 2>/dev/null || true
 groupadd -g 1003 aid_graphics 2>/dev/null || groupadd -f aid_graphics || true
 groupadd -f graphics 2>/dev/null || true
 
 if id "$USERNAME" &>/dev/null; then
-    echo -e "${YELLOW}User '$USERNAME' already exists. Updating password...${RESET}"
+    if [ "${RUN_USER:-yes}" = "yes" ] && [ -n "$PASSWORD" ]; then
+        echo -e "${YELLOW}Updating credentials for user '$USERNAME'...${RESET}"
+        echo "$USERNAME:$PASSWORD" | chpasswd
+        echo "root:$PASSWORD" | chpasswd
+    fi
 else
     useradd -m -s /bin/bash "$USERNAME"
+    if [ -n "$PASSWORD" ]; then
+        echo "$USERNAME:$PASSWORD" | chpasswd
+        echo "root:$PASSWORD" | chpasswd
+    fi
 fi
-
-echo "$USERNAME:$PASSWORD" | chpasswd
-echo "root:$PASSWORD" | chpasswd
 
 # Add user to hardware and permission groups
 usermod -aG sudo,wheel,video,audio,render,input,aid_graphics,graphics,aid_input,aid_bluetooth "$USERNAME" 2>/dev/null || true
@@ -193,12 +140,15 @@ if [ -f /etc/sudoers ]; then
     sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
 fi
 
-# Grant Sudo privileges without password prompt for touch convenience (if selected)
-if [ "$SUDO_CHOICE" == "yes" ]; then
-    mkdir -p /etc/sudoers.d
-    echo "$USERNAME ALL=(ALL:ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$USERNAME"
-    chmod 0440 "/etc/sudoers.d/$USERNAME"
-fi
+# Configure sudo privileges
+if [ "${RUN_USER:-yes}" = "yes" ]; then
+    if [ "$SUDO_CHOICE" == "yes" ]; then
+        mkdir -p /etc/sudoers.d
+        echo "$USERNAME ALL=(ALL:ALL) NOPASSWD:ALL" > "/etc/sudoers.d/$USERNAME"
+        chmod 0440 "/etc/sudoers.d/$USERNAME"
+    elif [ "$SUDO_CHOICE" == "no" ]; then
+        rm -f "/etc/sudoers.d/$USERNAME"
+    fi
 fi
 
 # --- 4. Audio & X11 Environment Configuration ---
@@ -293,6 +243,38 @@ unset VK_ICD_FILENAMES
 echo "Switched to Native Qualcomm Freedreno OpenGL driver mode."
 EOF
 chmod +x /usr/local/bin/enable-freedreno
+
+cat << 'EOF' > /usr/local/bin/enable-gl4es
+#!/usr/bin/env bash
+unset GALLIUM_DRIVER
+unset MESA_LOADER_DRIVER_OVERRIDE
+unset LIBGL_ALWAYS_SOFTWARE
+export LIBGL_ES=2
+export LIBGL_GL=21
+export LIBGL_NOBANNER=1
+export LD_LIBRARY_PATH=/usr/local/lib/gl4es:/usr/local/lib:$LD_LIBRARY_PATH
+echo "Switched to GL4ES Standalone OpenGL-to-GLES translation mode."
+EOF
+chmod +x /usr/local/bin/enable-gl4es
+
+cat << 'EOF' > /usr/local/bin/gl4es-run
+#!/usr/bin/env bash
+export LIBGL_ES=2
+export LIBGL_GL=21
+export LIBGL_NOBANNER=1
+export LD_LIBRARY_PATH=/usr/local/lib/gl4es:/usr/local/lib:$LD_LIBRARY_PATH
+exec "$@"
+EOF
+chmod +x /usr/local/bin/gl4es-run
+
+cat << 'EOF' > /usr/local/bin/zink-run
+#!/usr/bin/env bash
+export GALLIUM_DRIVER=zink
+export MESA_LOADER_DRIVER_OVERRIDE=zink
+export ZINK_DESCRIPTORS=lazy
+exec "$@"
+EOF
+chmod +x /usr/local/bin/zink-run
 
 cat << 'EOF' > /usr/local/bin/enable-software
 #!/usr/bin/env bash
