@@ -159,10 +159,9 @@ install_all_dependencies() {
     log_info "Enabling required repositories (root-repo, x11-repo, tur-repo)..."
     run_pkg "pkg install -y root-repo x11-repo tur-repo 2>/dev/null" || true
 
-    log_info "Installing Python, pip, sudo, tsu & core utilities..."
+    log_info "Installing Python, pip, tsu & core utilities..."
     DEPS=(
         "python"
-        "sudo"
         "tsu"
         "pulseaudio"
         "termux-x11-nightly"
@@ -238,8 +237,8 @@ check_and_elevate_root() {
 
     log_warn "Script is currently running as non-root user (UID $(id -u))."
 
-    # 2. Attempt root elevation cleanly without process crash
-    log_info "Attempting root elevation via installed sudo / tsu..."
+    # 2. Attempt root elevation cleanly via tsu (Termux official su wrapper) or su
+    log_info "Attempting root elevation via tsu / su..."
     export CALLER_PWD="${CALLER_PWD:-$PWD}"
     SCRIPT_PATH="$SCRIPT_DIR/setup.sh"
     [ ! -f "$SCRIPT_PATH" ] && SCRIPT_PATH="$PWD/setup.sh"
@@ -248,14 +247,6 @@ check_and_elevate_root() {
     chmod -R 755 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
 
     set +e
-    if command -v sudo &>/dev/null; then
-        sudo CALLER_PWD="$CALLER_PWD" bash "$SCRIPT_PATH" --elevated "$@"
-        ELEV_STATUS=$?
-        if [ $ELEV_STATUS -eq 0 ]; then
-            exit 0
-        fi
-    fi
-
     if command -v tsu &>/dev/null; then
         tsu -c "CALLER_PWD='$CALLER_PWD' bash '$SCRIPT_PATH' --elevated $*"
         ELEV_STATUS=$?
@@ -282,13 +273,10 @@ check_and_elevate_root() {
     echo "================================================================================"
     echo -e "${WHITE}Please choose one of the following options to proceed:${RESET}"
     echo ""
-    echo -e "${CYAN}Option 1:${RESET} Run the script manually using sudo:"
-    echo -e "          ${GREEN}sudo ./setup.sh${RESET}"
-    echo ""
-    echo -e "${CYAN}Option 2:${RESET} Add / grant Termux root permissions in your Root Manager application:"
+    echo -e "${CYAN}Option 1:${RESET} Grant Termux root permissions in your Root Manager:"
     echo -e "          ${WHITE}(Magisk, KernelSU, APatch, or SuperSU)${RESET}"
     echo ""
-    echo -e "${CYAN}Option 3:${RESET} Root your Android device if it is not currently rooted."
+    echo -e "${CYAN}Option 2:${RESET} Root your Android device if it is not currently rooted."
     echo -e "${YELLOW}${BOLD}================================================================================"
     echo -e "${RESET}"
     exit 1
