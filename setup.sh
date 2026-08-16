@@ -21,7 +21,7 @@ PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 TERMUX_HOME="${TERMUX_HOME:-/data/data/com.termux/files/home}"
 export PREFIX
 export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
-export LD_LIBRARY_PATH="$PREFIX/lib:$LD_LIBRARY_PATH"
+unset LD_PRELOAD 2>/dev/null || true
 
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
 if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ] || [ ! -d "$SCRIPT_DIR/scripts" ]; then
@@ -33,7 +33,7 @@ if [ -z "$SCRIPT_DIR" ] || [ "$SCRIPT_DIR" = "." ] || [ ! -d "$SCRIPT_DIR/script
         SCRIPT_DIR="$PWD"
     fi
 fi
-mkdir -p "$SCRIPT_DIR/scripts"
+mkdir -p "$SCRIPT_DIR/scripts" 2>/dev/null || true
 source "$SCRIPT_DIR/scripts/autochroot_state.sh" 2>/dev/null || true
 export SETUP_MODE="true"
 echo 'SETUP_MODE="true"' > "$SCRIPT_DIR/scripts/global_settings.sh"
@@ -256,26 +256,38 @@ check_and_elevate_root() {
 
     log_warn "Script is currently running as non-root user (UID $(id -u))."
 
-    # 2. Attempt root elevation cleanly via tsu (Termux official su wrapper) or su
-    log_info "Attempting root elevation via tsu / su..."
+    # 2. Attempt root elevation cleanly via su / tsu
+    log_info "Attempting root elevation via su / tsu..."
     export CALLER_PWD="${CALLER_PWD:-$PWD}"
     SCRIPT_PATH="$SCRIPT_DIR/setup.sh"
     [ ! -f "$SCRIPT_PATH" ] && SCRIPT_PATH="$PWD/setup.sh"
     
+    chmod 755 /data/data/com.termux /data/data/com.termux/files /data/data/com.termux/files/usr /data/data/com.termux/files/usr/bin /data/data/com.termux/files/home 2>/dev/null || true
     chmod -R 755 "$SCRIPT_DIR" 2>/dev/null || true
     chmod -R 755 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
 
+    ELEV_CMD="export PREFIX='$PREFIX'; export TERMUX_HOME='$TERMUX_HOME'; export PATH='$PATH'; export CALLER_PWD='$CALLER_PWD'; bash '$SCRIPT_PATH' --elevated"
+    if [ -n "$*" ]; then
+        ELEV_CMD="$ELEV_CMD $*"
+    fi
+
     set +e
-    if command -v tsu &>/dev/null; then
-        tsu -c "export PREFIX='$PREFIX'; export TERMUX_HOME='$TERMUX_HOME'; export PATH='$PATH'; export CALLER_PWD='$CALLER_PWD'; bash '$SCRIPT_PATH' --elevated $*"
+    if command -v su &>/dev/null; then
+        su -c "$ELEV_CMD"
+        ELEV_STATUS=$?
+        if [ $ELEV_STATUS -eq 0 ]; then
+            exit 0
+        fi
+        
+        su 0 -c "$ELEV_CMD" 2>/dev/null
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
         fi
     fi
 
-    if command -v su &>/dev/null; then
-        su -c "export PREFIX='$PREFIX'; export TERMUX_HOME='$TERMUX_HOME'; export PATH='$PATH'; export CALLER_PWD='$CALLER_PWD'; bash '$SCRIPT_PATH' --elevated $*"
+    if command -v tsu &>/dev/null; then
+        tsu -c "$ELEV_CMD" 2>/dev/null
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0

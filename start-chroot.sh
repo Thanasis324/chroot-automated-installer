@@ -13,7 +13,7 @@ PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 TERMUX_HOME="${TERMUX_HOME:-/data/data/com.termux/files/home}"
 export PREFIX
 export PATH="$PREFIX/bin:$TERMUX_HOME/.local/bin:$PATH:/system/bin:/system/xbin"
-export LD_LIBRARY_PATH="$PREFIX/lib:$LD_LIBRARY_PATH"
+unset LD_PRELOAD 2>/dev/null || true
 
 PREFIX_VAR="${PREFIX}/var/lib"
 SCRIPT_DIR="$(cd "${BASH_SOURCE[0]%/*}" 2>/dev/null && pwd)"
