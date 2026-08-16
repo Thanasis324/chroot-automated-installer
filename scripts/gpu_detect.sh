@@ -71,7 +71,7 @@ detect_adreno_gpu() {
         MODEL_NUM=$(echo "$ALL_INFO" | grep -oE "[aA]dreno[[:blank:]]*(\(TM\)|\(R\))?[[:blank:]]*[0-9]+" | grep -oE "[0-9]+" | head -n 1 || true)
 
         if [ -z "$MODEL_NUM" ]; then
-            MODEL_NUM=$(echo "$ALL_INFO" | grep -oE "\b(6[0-9]{2}|7[0-9]{2}|8[0-9]{2})\b" | head -n 1 || true)
+            MODEL_NUM=$(echo "$ALL_INFO" | grep -oE "\b([3-8][0-9]{2})\b" | head -n 1 || true)
         fi
 
         if [[ "$MODEL_NUM" =~ ^[0-9]+$ ]]; then
@@ -81,8 +81,12 @@ detect_adreno_gpu() {
                 ADRENO_SERIES="A7XX"
             elif [ "$MODEL_NUM" -ge 600 ]; then
                 ADRENO_SERIES="A6XX"
-            else
+            elif [ "$MODEL_NUM" -ge 500 ]; then
                 ADRENO_SERIES="A5XX"
+            elif [ "$MODEL_NUM" -ge 400 ]; then
+                ADRENO_SERIES="A4XX"
+            else
+                ADRENO_SERIES="A3XX"
             fi
         else
             ADRENO_SERIES="A8XX"

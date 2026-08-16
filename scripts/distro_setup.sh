@@ -85,6 +85,12 @@ fi
 
 echo -e "${CYAN}${BOLD}[${DISTRO_NAME^^} SETUP] Initializing environment configuration...${RESET}"
 
+# Ensure reliable DNS resolution (fallback if Android netd or resolv.conf is empty)
+if [ ! -s /etc/resolv.conf ] || ! grep -q "nameserver" /etc/resolv.conf 2>/dev/null; then
+    echo "nameserver 1.1.1.1" > /etc/resolv.conf 2>/dev/null || true
+    echo "nameserver 8.8.8.8" >> /etc/resolv.conf 2>/dev/null || true
+fi
+
 # --- 1. Fix Permissions on Hardware Device Nodes ---
 echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Adjusting permissions on Android hardware device nodes...${RESET}"
 chmod 666 /dev/kgsl-3d0 2>/dev/null || true
@@ -166,15 +172,18 @@ dbus-uuidgen --ensure 2>/dev/null || true
 if [ "${RUN_USER:-yes}" = "yes" ]; then
 echo -e "${CYAN}[${DISTRO_NAME^^} SETUP] Setting up user '$USERNAME' with passwordless sudo & graphics permissions...${RESET}"
 
-# Ensure essential groups exist, including Android AID_GRAPHICS (GID 1003)
+# Ensure essential groups exist, including Android AID_GRAPHICS (GID 1003) & Android paranoid network GIDs (3003/3004/3005)
 groupadd -f sudo 2>/dev/null || true
 groupadd -f wheel 2>/dev/null || true
-groupadd -f video
-groupadd -f audio
-groupadd -f render
-groupadd -f input
-groupadd -g 1003 aid_graphics 2>/dev/null || groupadd -f aid_graphics || true
+groupadd -f video 2>/dev/null || true
+groupadd -f audio 2>/dev/null || true
+groupadd -f render 2>/dev/null || true
+groupadd -f input 2>/dev/null || true
+groupadd -g 1003 aid_graphics 2>/dev/null || groupadd -f aid_graphics 2>/dev/null || true
 groupadd -f graphics 2>/dev/null || true
+groupadd -g 3003 aid_inet 2>/dev/null || groupadd -f aid_inet 2>/dev/null || true
+groupadd -g 3004 aid_net_raw 2>/dev/null || groupadd -f aid_net_raw 2>/dev/null || true
+groupadd -g 3005 aid_admin 2>/dev/null || groupadd -f aid_admin 2>/dev/null || true
 
 if id "$USERNAME" &>/dev/null; then
     echo -e "${YELLOW}User '$USERNAME' already exists. Updating password...${RESET}"
@@ -186,7 +195,8 @@ echo "$USERNAME:$PASSWORD" | chpasswd
 echo "root:$PASSWORD" | chpasswd
 
 # Add user to hardware and permission groups
-usermod -aG sudo,wheel,video,audio,render,input,aid_graphics,graphics,aid_input,aid_bluetooth "$USERNAME" 2>/dev/null || true
+usermod -aG sudo,wheel,video,audio,render,input,aid_graphics,graphics,aid_inet,aid_net_raw,aid_admin "$USERNAME" 2>/dev/null || true
+usermod -aG aid_inet,aid_net_raw,aid_admin root 2>/dev/null || true
 
 # Ensure wheel group has sudo privileges (Critical for Arch Linux default sudoers)
 if [ -f /etc/sudoers ]; then

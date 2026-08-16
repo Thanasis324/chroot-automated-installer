@@ -258,9 +258,27 @@ check_and_elevate_root() {
         return 0
     fi
 
-    log_warn "Script is currently running as non-root user (UID ${EUID:-$UID})."
+    # 2. Persist state to secure transport file to prevent mksh / su command line truncation on Android 7
+    STATE_DIR="${PREFIX}/var/lib/autochroot"
+    mkdir -p "$STATE_DIR" 2>/dev/null || true
+    cat <<EOF > "$STATE_DIR/setup_state.env"
+PREFIX="$PREFIX"
+TERMUX_HOME="$TERMUX_HOME"
+CALLER_PWD="$CALLER_PWD"
+SELECTED_DISTRO="$SELECTED_DISTRO"
+DISTRO_FAMILY="$DISTRO_FAMILY"
+USERNAME="$USERNAME"
+PASSWORD="$PASSWORD"
+SUDO_CHOICE="$SUDO_CHOICE"
+CUSTOM_SETUP_MODE="$CUSTOM_SETUP_MODE"
+IS_CUSTOM_ROOTFS="$IS_CUSTOM_ROOTFS"
+IS_CUSTOM_MODE="$IS_CUSTOM_MODE"
+CUSTOM_ARCHIVE="$CUSTOM_ARCHIVE"
+EOF
+    chmod 600 "$STATE_DIR/setup_state.env" 2>/dev/null || true
+    cp -f "$STATE_DIR/setup_state.env" "$TERMUX_HOME/.autochroot_setup_state.env" 2>/dev/null || true
+    chmod 600 "$TERMUX_HOME/.autochroot_setup_state.env" 2>/dev/null || true
 
-    # 2. Attempt root elevation cleanly via su / tsu
     log_info "Attempting root elevation via su / tsu..."
     export CALLER_PWD="${CALLER_PWD:-$PWD}"
     SCRIPT_PATH="$SCRIPT_DIR/setup.sh"
@@ -270,25 +288,58 @@ check_and_elevate_root() {
     chmod -R 755 "$SCRIPT_DIR" 2>/dev/null || true
     chmod -R 755 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
 
-    ELEV_CMD="export PREFIX='$PREFIX'; export TERMUX_HOME='$TERMUX_HOME'; export PATH='$PATH'; export CALLER_PWD='$CALLER_PWD'; export SELECTED_DISTRO='$SELECTED_DISTRO'; export DISTRO_FAMILY='$DISTRO_FAMILY'; export USERNAME='$USERNAME'; export PASSWORD='$PASSWORD'; export SUDO_CHOICE='$SUDO_CHOICE'; export CUSTOM_SETUP_MODE='$CUSTOM_SETUP_MODE'; export IS_CUSTOM_ROOTFS='$IS_CUSTOM_ROOTFS'; export IS_CUSTOM_MODE='$IS_CUSTOM_MODE'; export CUSTOM_ARCHIVE='$CUSTOM_ARCHIVE'; bash '$SCRIPT_PATH' --elevated"
+    BASH_BIN="${PREFIX}/bin/bash"
+    [ ! -x "$BASH_BIN" ] && BASH_BIN="$(command -v bash 2>/dev/null || echo "/data/data/com.termux/files/usr/bin/bash")"
+    RUN_CMD="$BASH_BIN '$SCRIPT_PATH' --elevated"
 
     set +e
+    # Strategy 1: Magisk Mount Master mode (critical for Android 7 / custom ROMs with isolated namespaces)
     if command -v su &>/dev/null; then
-        su -c "$ELEV_CMD"
+        su --mount-master -c "$RUN_CMD" 2>/dev/null
+        ELEV_STATUS=$?
+        if [ $ELEV_STATUS -eq 0 ]; then
+            exit 0
+        fi
+
+        su -mm -c "$RUN_CMD" 2>/dev/null
+        ELEV_STATUS=$?
+        if [ $ELEV_STATUS -eq 0 ]; then
+            exit 0
+        fi
+
+        # Strategy 2: Direct su -c
+        su -c "$RUN_CMD"
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
         fi
         
-        su 0 -c "$ELEV_CMD" 2>/dev/null
+        # Strategy 3: su 0 -c
+        su 0 -c "$RUN_CMD" 2>/dev/null
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
         fi
     fi
 
+    # Strategy 4: tsu
     if command -v tsu &>/dev/null; then
-        tsu -c "$ELEV_CMD" 2>/dev/null
+        tsu -c "$RUN_CMD" 2>/dev/null
+        ELEV_STATUS=$?
+        if [ $ELEV_STATUS -eq 0 ]; then
+            exit 0
+        fi
+    fi
+
+    # Strategy 5: Explicit system binary fallback
+    if [ -x /system/bin/su ]; then
+        /system/bin/su -c "$RUN_CMD" 2>/dev/null
+        ELEV_STATUS=$?
+        if [ $ELEV_STATUS -eq 0 ]; then
+            exit 0
+        fi
+    elif [ -x /system/xbin/su ]; then
+        /system/xbin/su -c "$RUN_CMD" 2>/dev/null
         ELEV_STATUS=$?
         if [ $ELEV_STATUS -eq 0 ]; then
             exit 0
@@ -778,6 +829,22 @@ main() {
     if [ "$1" == "--elevated" ]; then
         # We are on the elevated pass (running as root)
         shift # remove --elevated from args
+
+        # Load persisted configuration state
+        STATE_FILE="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/autochroot/setup_state.env"
+        BACKUP_STATE="/data/data/com.termux/files/home/.autochroot_setup_state.env"
+        if [ -f "$STATE_FILE" ]; then
+            source "$STATE_FILE" 2>/dev/null || true
+        elif [ -f "$BACKUP_STATE" ]; then
+            source "$BACKUP_STATE" 2>/dev/null || true
+        fi
+
+        # Immediate root permission unlock & SELinux permissive
+        chmod 755 /data/data/com.termux /data/data/com.termux/files /data/data/com.termux/files/usr /data/data/com.termux/files/usr/bin /data/data/com.termux/files/home 2>/dev/null || true
+        chmod -R 755 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
+        setenforce 0 2>/dev/null || true
+        chcon -R u:object_r:system_file:s0 "${PREFIX:-/data/data/com.termux/files/usr}/bin" 2>/dev/null || true
+
         if [ -z "$SELECTED_DISTRO" ]; then
             get_distro_selection
         fi
@@ -788,6 +855,7 @@ main() {
         configure_chroot_system
         setup_launchers
         verify_and_finish
+        rm -f "$STATE_FILE" "$BACKUP_STATE" 2>/dev/null || true
         exit 0
     elif [ "${EUID:-$(id -u 2>/dev/null || echo 1)}" -eq 0 ] || [ "${UID:-1}" -eq 0 ]; then
         # Running directly with root privileges
