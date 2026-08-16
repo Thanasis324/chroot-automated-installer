@@ -1,24 +1,33 @@
 # Termux Automated Linux Chroot Setup Script
 
-An automated, touch-optimized, and graphically appealing installation script for running **Fedora**, **Debian**, or **Arch Linux** inside **Termux** natively using **`chroot-distro`**. This script integrates **Termux:X11** display output, **PulseAudio** sound, and flawless hardware-accelerated **Qualcomm Adreno Turnip/Zink (A6XX / A7XX / A8XX) GPU Drivers**, alongside **VirGL** (stable universal fallback) and **GL4ES** (experimental acceleration for non-Adreno GPUs).
+An automated, touch-optimized, and graphically appealing installation script for running **Fedora**, **Debian**, or **Arch Linux** inside **Termux** natively using **`chroot-distro`**. This script integrates **Termux:X11** display output, **PulseAudio** sound, and hardware-accelerated **Qualcomm Adreno Turnip/Zink (A6XX / A7XX / A8XX) GPU Drivers**, alongside **VirGL** (host 3D virtualization for Kernel $\ge$ 4.4), **GL4ES** (standalone OpenGL-to-GLES translation for legacy Kernel 3.x / non-Adreno devices), and **LLVMpipe** (CPU software rendering).
+
+---
+
+> [!IMPORTANT]
+> ### 📱 Supported Hardware Architecture: `arm64` (aarch64)
+> - This installer and its high-performance driver stacks are built and optimized exclusively for **64-bit ARM (`arm64` / `aarch64`)** devices.
+> - While other architectures (such as `armhf`, `arm32`, or `x86_64`) may partially boot through distribution fallback packages and GL4ES source compilation, they are **NOT officially supported**.
+> - **Please do NOT report bug issues or compatibility failures resulting from non-arm64 package architectures.**
 
 ---
 
 ## 📊 Project Status
 
-- **Debian**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno, VirGL, and experimental GL4ES).
-- **Fedora**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno, VirGL, and experimental GL4ES).
-- **Arch Linux**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPUs (Adreno, VirGL, and experimental GL4ES).
-- **Custom Distro**: 🟡 Generally works, but is for more advanced users (supports importing custom `.tar.gz` rootfs archives with optional automated touch desktop & GPU configuration).
+- **Debian**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPU pipelines (Turnip/Zink, Freedreno, VirGL, Standalone GL4ES).
+- **Fedora**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPU pipelines (Turnip/Zink, Freedreno, VirGL, Standalone GL4ES).
+- **Arch Linux**: 🟢 Fully supported and tested. Hardware acceleration works flawlessly with all supported GPU pipelines (Turnip/Zink, Freedreno, VirGL, Standalone GL4ES).
+- **Custom Distro**: 🟡 Generally works, but is intended for advanced users (supports importing custom `.tar.gz` rootfs archives with automated touch desktop and GPU configuration).
 
 ---
 
 ## 🚀 How to Run in Termux
 
 ### Prerequisites
+- **64-bit ARM Android Device (`arm64` / `aarch64`)**
 - **Termux** app installed. (Download the latest release from [F-Droid](https://f-droid.org/packages/com.termux/) or [GitHub](https://github.com/termux/termux-app/releases))
 - **Termux:X11** app installed. (Download the latest nightly release from [GitHub](https://github.com/termux/termux-x11/releases/tag/nightly))
-- **Rooted Device** (Required for `chroot-distro`). *Not sure what Android rooting is? Read this guide on Rooting with [Magisk](https://topjohnwu.github.io/Magisk/) and [KernelSU](https://kernelsu.org/) (recommended for newer android versions).*
+- **Rooted Device** (Required for `chroot-distro`). *Supports [Magisk](https://topjohnwu.github.io/Magisk/) and [KernelSU](https://kernelsu.org/). Root privilege escalation automatically falls back across `sudo`, `tsu`, and native `su`.*
 - **Recommended Termux:X11 Settings:**
   1. Output ➔ **Fullscreen**: `on`
   2. Pointer ➔ **Touchscreen input mode**: `Direct touch`
@@ -26,43 +35,46 @@ An automated, touch-optimized, and graphically appealing installation script for
 
 ### Installation Guide
 
-#### Step 1: Clone the Repository
-Open Termux and download the latest version of the installer using `curl | bash`:
+#### Step 1: Install Autochroot
+Open Termux and run the one-line automated installer:
 ```bash
 curl -sL https://raw.githubusercontent.com/Thanasis324/chroot-automated-installer/main/install.sh | bash
 ```
 
-After the installation finishes exit termux, simply type:
+After installation finishes, restart your Termux session:
 ```bash
 exit
 ```
 
-Autochroot installs its managed files in `$PREFIX/Chroot-Automated-Installer`
-(`$PREFIX` is normally `/data/data/com.termux/files/usr`). At the end, it can
-optionally remove the visible `~/chroot-automated-installer` download folder.
+Autochroot installs its managed binaries in `$PREFIX/Chroot-Automated-Installer` and links the global `autochroot` command into your path.
 
 #### Step 2: Run the Installer
-Run the setup script directly as your standard Termux user (**Do NOT run with sudo!** The script intelligently elevates privileges automatically when needed):
+Launch setup directly as your standard Termux user (**Do NOT manually run with sudo!** The installer handles privilege elevation cleanly):
 ```bash
 autochroot setup
 # Use 'autochroot setup -c' to install a custom rootfs (place custom.tar.gz in ~/):
 # autochroot setup -c
 ```
 
-#### Step 3: Interactive Setup & Mirror Selection
-The script features an advanced setup UI that will guide you through:
+#### Step 3: Interactive Setup & Configuration
+The setup wizard will guide you through:
 1. **Repository Mirror Selection**: Automatically launches `termux-change-repo` so you can select the fastest mirror for your region.
 2. **Linux Distribution Selection**: 
-   - **Debian** *(Recommended - Highly stable core, excellent support)*
-   - **Fedora** *(Alternative - Modern, cutting-edge software)*
-   - **Archlinux** *(For advanced rolling-release users)*
-3. **Desired Username & Password**
-4. **GPU Architecture Selection**: If it cannot auto-detect your GPU, it will ask you to select between **Adreno 8xx/7xx/6xx/5xx**, **VirGL (stable fallback for Mali/PowerVR/Exynos/Tensor)**, or **GL4ES (experimental translation for non-Adreno GPUs)**.
+   - **Debian** *(Recommended - Rock-solid stability, maximum compatibility)*
+   - **Fedora** *(Cutting-edge packages and modern stack)*
+   - **Arch Linux** *(Rolling-release for advanced users)*
+3. **User Account Registration**: Configures your standard non-root username, password, and optional passwordless sudo.
+4. **GPU Architecture Detection & Driver Selection**:
+   - **Adreno Turnip + Zink** *(Snapdragon A6xx / A7xx / A8xx Vulkan & OpenGL acceleration)*
+   - **Adreno Freedreno** *(Native OpenGL driver for older Adreno chips)*
+   - **VirGL Hardware Passthrough** *(Host 3D virtualization for Kernel $\ge$ 4.4 on Mali / Tensor / Exynos)*
+   - **GL4ES Standalone** *(OpenGL-to-GLES translation for legacy Kernel 3.x / non-Adreno devices without VirGL)*
+   - **LLVMpipe** *(CPU software rendering fallback)*
 
-#### Step 4: Launch your Touch Desktop (Do NOT use sudo!)
-Once installation finishes, start your system:
+#### Step 4: Launch your Touch Desktop
+Once installation is complete, start your system:
 1. Open the **Termux:X11** app on your Android device.
-2. Launch the desktop directly as a regular Termux user:
+2. Return to Termux and launch your desktop session:
    ```bash
    autochroot start
    ```
@@ -71,86 +83,92 @@ Once installation finishes, start your system:
 
 ## 🛠️ Post-Install Configuration (`autochroot config`)
 
-If you ever need to change your settings, fix broken packages, update drivers, or safely remove the operating system, you can use the central configuration hub:
+If you need to adjust your settings, change drivers, repair packages, or safely remove a distribution, run:
 
 ```bash
 autochroot config
 ```
 
 **Available Options:**
-1. **Fix / Update GPU Drivers**: Launches a tiered interactive menu that lets you change your SoC platform (Adreno/Tensor/Exynos/Mali), Adreno Generation, and Graphics Backend (Turnip+Zink / Freedreno / VirGL [stable fallback] / GL4ES [experimental] / LLVMpipe). Ideal if you upgraded your phone or chose the wrong driver during setup.
-2. **Repair Distro Packages & Settings**: Fixes broken apt/dnf/pacman packages, heals a broken XFCE4 desktop environment, or resets user configurations back to factory defaults without erasing the whole OS.
-3. **Manage Passwordless Sudo**: Dynamically toggle whether your Linux user account requires a password to execute root-level commands.
-4. **Manage Storage / Uninstall**: A safe removal utility that lets you delete specific Linux distributions (Debian/Fedora/Arch) to free up space, or completely eradicate the installer and its dependencies from Termux.
+1. **Fix / Update GPU Drivers**: Interactive GPU management hub to change your SoC platform, Adreno generation, or graphics backend (Turnip+Zink / Freedreno / VirGL / GL4ES Standalone / LLVMpipe). Includes optional GL4ES source compilation (`ptitSeb/gl4es`) and container Mesa optimization.
+2. **Repair Distro Packages & Settings**: Modular repair wizard that lets you selectively:
+   - Reinstall and heal core system packages (fixing broken `apt`/`dnf`/`pacman` states).
+   - Rebuild X11, Display, and PulseAudio environment configurations.
+   - Reconfigure user credentials, passwords, and passwordless sudo privileges.
+3. **Manage Passwordless Sudo**: Dynamically toggle whether your Linux user account requires a password for root commands.
+4. **Manage Storage / Uninstall**: Cleanly remove individual Linux distributions or completely uninstall autochroot and its components.
 
+---
 
+## 🔄 Keeping Updated (`autochroot update`)
+
+You can check for updates or sync with the latest repository changes at any time:
+
+```bash
+# Update to latest stable release
+autochroot update
+
+# Sync with latest development branch
+autochroot update -d
+```
+
+---
 
 ## 🌟 Key Features
 
-1. **Near-Native Performance**: Built exclusively around `chroot`, allowing your Linux system to talk directly to your phone's hardware. This delivers massively better speed and gaming performance compared to standard `PRoot` methods!
-2. **Plug & Play Bluetooth Controllers**: Connect your favorite gamepad and it just works—complete with rumble (force-feedback) and LED support.
-   - Fully supports Xbox, PlayStation (DualShock/DualSense), Nintendo Switch, 8BitDo, GameSir, and generic Bluetooth controllers out of the box.
-3. **Hardware-Accelerated Graphics**:
-   - **Snapdragon / Adreno Users**: Automatically detects and unlocks your GPU's full potential using custom Vulkan and OpenGL drivers (Turnip/Zink). Even supports the newest Snapdragon 8 Gen 4 / 8 Elite!
-   - **Other Chips (Tensor, Exynos, Mali, PowerVR)**: Uses **VirGL** as a reliable, stable 3D acceleration fallback, with **GL4ES** available as an experimental translation layer for OpenGL games on GLES hardware.
-4. **Automated & Safe Setup**: The installer handles all the complicated permissions, audio routing, and root setups for you in the background without breaking your phone.
-5. **Touch-Optimized Desktop**:
-   - Gives you a beautiful, pre-configured Dark Mode desktop (XFCE4).
-   - **Single-Click UI**: Everything opens with a single tap, making it super easy to use on a touchscreen.
-   - **Virtual Keyboard**: Includes an on-screen keyboard that automatically docks and appears when you need to type.
-   - **Safe Shutdown**: Includes a convenient "Shutdown OS" button on the desktop to safely close everything down.
+1. **Near-Native Performance**: Built around `chroot-distro`, allowing Linux to execute directly against the host Linux kernel for near-native CPU and graphics throughput without PRoot emulation overhead.
+2. **Plug & Play Gamepad & Controller Support**: Connect gamepads via Bluetooth or USB with automatic detection, rumble (force-feedback), and LED support (Xbox, DualShock/DualSense, Switch Pro, 8BitDo, GameSir).
+3. **Comprehensive Graphics Acceleration**:
+   - **Snapdragon / Adreno**: Hardware Vulkan (Turnip) and desktop OpenGL (Zink) via `lfdevs/mesa-for-android-container`. Supports Adreno 6xx, 7xx, and 8xx (Snapdragon 8 Gen 4 / 8 Elite).
+   - **Mali, Tensor, Exynos, PowerVR (Kernel $\ge$ 4.4)**: VirGL 3D host hardware virtualization over `/tmp/.virgl_test`.
+   - **Legacy Devices & Kernel 3.x**: Standalone GL4ES userspace OpenGL $\rightarrow$ OpenGLES translation engine without server socket dependencies.
+   - **Universal CPU Fallback**: Optimized LLVMpipe with JIT stability flags (`GALLIVM_PERF=nopt`, `OPENSSL_armcap=0`).
+4. **Touch-Optimized Desktop Experience**:
+   - Pre-configured Dark Mode XFCE4 desktop.
+   - Single-tap execution mode tailored for Android touchscreens.
+   - Auto-docking on-screen virtual keyboard (**Onboard**).
+   - Dedicated "Shutdown OS" desktop action for safe container unmounting.
 
 ---
 
 ## 🧠 For Advanced Users & Developers
 
-If you are a developer or a power user tasked with debugging or extending this environment, here is the technical blueprint of how everything connects under the hood:
+**1. Container & Process Isolation**
+* Bypasses PRoot completely using native `chroot` privilege boundaries.
+* Base environment variables and DBus socket definitions are statically populated in `/etc/profile.d/termux_env.sh`.
+* X11 is routed to Termux:X11 via `/tmp/.X11-unix` socket mapping, and PulseAudio streams via TCP loopback (`PULSE_SERVER=tcp:127.0.0.1:4713`).
 
-**1. Installation & Boot Architecture**
-*   **The Chroot:** This setup completely bypasses PRoot and uses `chroot-distro` (requiring a rooted device) to communicate directly with the Android kernel for maximum bare-metal performance.
-*   **Environment Injection:** The base environment variables (like `XDG_RUNTIME_DIR` and DBus socket definitions) are statically generated into `/etc/profile.d/termux_env.sh` during setup. `start_fedora.sh` binds the container and executes the XFCE4 session using `dbus-run-session`.
-*   **Display & Audio:** X11 is piped directly to the `Termux:X11` Android app via local sockets (`DISPLAY=:0`). Audio is streamed via TCP to the Termux PulseAudio server (`PULSE_SERVER=tcp:127.0.0.1:4713`).
+**2. GPU Acceleration Pipelines**
+* **Turnip + Zink (`MESA_VK_WSI_DEBUG=sw`)**: Ingests Turnip Vulkan rendering and bridges to X11 via software shared-memory presentation buffers, preventing `CreateSwapchainKHR` crashes.
+* **Adreno 8xx Stability**: Stabilized with `TU_DEBUG=kgsl,noconform,nolrz` and KGSL surface patches.
+* **VirGL Daemon Management**: Launchers conditionally start `virgl_test_server` and bind `/tmp/.virgl_test` strictly when `RENDERER=virgl`.
+* **Standalone GL4ES**: Bypasses VirGL sockets entirely and translates desktop GL calls directly to hardware OpenGLES 2.0. Runner helpers `gl4es-run`, `zink-run`, and `virgl-run` are pre-injected into `/usr/local/bin/`.
 
-**2. The GPU Acceleration Stack (Turnip + Zink / VirGL / GL4ES)**
-*   **The Hardware Bridge:** Adreno GPUs (especially the 8xx series like Snapdragon 8s Gen 4 / 8 Elite) use the **Turnip** Vulkan ICD (`freedreno_icd.aarch64.json`). OpenGL is layered on top of Vulkan using the **Zink** gallium driver.
-*   **Critical Vulkan/X11 Fix (`MESA_VK_WSI_DEBUG=sw`):** Termux:X11 operates over a socket and cannot natively ingest hardware DMA-BUF surfaces from Turnip. To prevent `CreateSwapchainKHR` and `GLXBadCurrentWindow` crashes in applications, we forcefully inject `MESA_VK_WSI_DEBUG=sw`. This commands Mesa's Window System Integration to utilize a software shared-memory buffer to present the final hardware-rendered frame to X11.
-*   **Adreno 8xx Stability:** Modern Adreno chips frequently hang on experimental Turnip drivers. We stabilize them by injecting `TU_DEBUG=kgsl,noconform,nolrz`.
-*   **VirGL Fallback:** Non-Adreno SoCs route through the VirGL server (`virgl_test_server`) communicating over `/tmp/.virgl_test`, providing stable 3D hardware rendering across Mali, Tensor, and Exynos chipsets.
-*   **Experimental GL4ES Translation:** For non-Adreno devices needing lightweight OpenGL 1.x/2.x support without full desktop Mesa stacks, GL4ES intercepts OpenGL calls and maps them to the underlying OpenGL ES hardware.
-*   **Software Rendering & CPU Compatibility:** When falling back to `LLVMpipe`, modern ARM CPUs may falsely report SVE capabilities, causing illegal instruction crashes (`SIGILL`) in 3D apps. We inject `GALLIVM_PERF=nopt` to disable these buggy JIT optimizations. Additionally, `OPENSSL_armcap=0` is set to prevent `libcrypto` from crashing during hardware capability probing on newer Snapdragon chips.
-*   **Helper Scripts:** The environment generates `/usr/local/bin/enable-zink` and `/usr/local/bin/enable-freedreno` to allow users to hot-swap graphics stacks via bash aliases if an application misbehaves.
-
-**3. Desktop Environment (XFCE4) & Compositing**
-*   Because Zink intercepts the OpenGL pipeline globally, it can violently crash if the XFCE window manager attempts to composite shadows and transparencies using unsupported legacy X11 extensions. 
-*   We forcefully disable compositing in `xfwm4.xml` and inject a `disable-compositor.desktop` autostart script to guarantee XFCE never tries to render composited effects, protecting the GPU pipeline for actual games/applications.
-
-**4. Native Steam (ARM64 & x86) and Kernel IPC Constraints**
-*   **The Emulation Route:** Running x86 games requires FEX-Emu/Box64. This relies on the kernel flag `CONFIG_BINFMT_MISC=y` to automatically catch and translate x86 binaries.
-*   **The Native ARM64 Steam Route:** Even if you use a native ARM64 build of the Steam Client, **Steam will fail to launch** (`threadtools.cpp : Assertion Failed: Function not implemented`) on standard Android kernels.
-*   **The Kernel Requirement:** Valve's Steam engine intrinsically relies on legacy **System V IPC Semaphores** (`semget`). Android disables this globally for security. You **cannot** bypass this in a true chroot using `LD_PRELOAD` shims (like `libandroid-shmem`, which only handles shared memory, not semaphores). **You MUST flash a custom Android kernel with `CONFIG_SYSVIPC=y` compiled in** if you want Steam to boot.
+**3. Desktop Compositor Safeguards**
+* XFCE window compositing is explicitly disabled in `xfwm4.xml` and enforced via `disable-compositor.desktop` to prevent legacy X11 extensions from crashing hardware Vulkan/Zink pipelines.
 
 ---
 
-## 🐛 Known Bugs & Troubleshooting
+## 🐛 Known Issues & Troubleshooting
 
-**1. "Container fedora is busy" or "/dev/null Permission Denied"**
-*   **Cause:** If your Android device undergoes a "soft reboot" (e.g. SurfaceFlinger or SystemUI crashes and restarts) while the chroot is active, Android's kernel does not restart. This leaves the `chroot-distro` mounts (like `/dev` and `/tmp`) orphaned and locked in a broken state.
-*   **Fix:** Do a full hardware restart of your phone. Rebooting the device will cleanly flush all orphaned kernel namespaces and mounts, allowing `./start-chroot.sh` to work perfectly again.
+**1. "Container is busy" or "/dev/null Permission Denied"**
+* **Cause**: Soft reboots (SystemUI or SurfaceFlinger crash) leave kernel chroot mounts orphaned in Android's namespace.
+* **Fix**: Perform a full hardware reboot of your Android device to cleanly flush all mount points.
+
+**2. Non-ARM64 / 32-bit Hardware Incompatibility**
+* Upstream container Mesa builds are strictly 64-bit (`arm64`). On 32-bit (`armhf`) devices, standard distribution Mesa packages and GL4ES source compilation are used as fallback.
 
 ---
 
 ## 🙏 Credits & Acknowledgments
 
-*   **[chroot-distro](https://github.com/sabamdarif/chroot-distro)**: This project is heavily reliant on the incredible work done by the `chroot-distro` project to provide native, high-performance containerization on Android.
-*   **[Termux](https://termux.dev/) & [Termux:X11](https://github.com/termux/termux-x11)**: For providing the core terminal environment and the robust X11 display server that makes the graphical interface possible.
-*   **[Mesa Project](https://www.mesa3d.org/)**: For the open-source Turnip (Vulkan) and Zink (OpenGL) drivers.
-*   **[lfdevs/mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)**: Huge thanks to these folks for providing pre-compiled, highly-optimized bleeding-edge Mesa drivers. They are the ones who allowed us to get the latest Mesa working seamlessly inside Debian, Fedora, and Arch Linux on Android!
-*   **[XFCE](https://xfce.org/)**: For the lightweight, fast, and touch-friendly desktop environment used in this setup.
-*   **[PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/)**: For enabling seamless audio streaming between the chroot and Android.
-*   **[VirGL](https://virgil3d.github.io/)**: For providing the rock-solid fallback 3D hardware acceleration for non-Adreno GPUs.
-*   **[GL4ES](https://github.com/ptitSeb/gl4es)**: For the lightweight OpenGL-to-GLES translation library enabling experimental 3D support on non-Adreno hardware.
-*   **[Arc Theme](https://github.com/horst3180/arc-theme) & [Papirus Icons](https://github.com/PapirusDevelopmentTeam/papirus-icon-theme)**: For the sleek and beautiful dark mode desktop aesthetics.
-*   **[Onboard](https://launchpad.net/onboard)**: For the touch-optimized virtual keyboard that makes interacting with the desktop possible.
-*   **[Box64](https://box86.org/) & [FEX-Emu](https://fex-emu.com/)**: For their incredible x86 emulation technologies that make PC gaming possible on ARM devices.
-*   **[Magisk](https://topjohnwu.github.io/Magisk/) & [KernelSU](https://kernelsu.org/)**: For providing the essential root access necessary to utilize raw chroot performance on Android.
-*   **Linux Distributions**: Thanks to the **[Fedora](https://fedoraproject.org/)**, **[Debian](https://www.debian.org/)**, and **[Arch Linux](https://archlinux.org/)** projects for their robust operating systems.
+* **[chroot-distro](https://github.com/sabamdarif/chroot-distro)**: High-performance native chroot containerization on Android.
+* **[Termux](https://termux.dev/) & [Termux:X11](https://github.com/termux/termux-x11)**: Core terminal environment and Android X11 display server.
+* **[Mesa Project](https://www.mesa3d.org/)**: Open-source Turnip (Vulkan) and Zink (OpenGL) drivers.
+* **[lfdevs/mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container)**: Optimized Mesa driver builds for Linux containers on Android.
+* **[ptitSeb/gl4es](https://github.com/ptitSeb/gl4es)**: OpenGL-to-OpenGLES translation engine for embedded/legacy devices.
+* **[VirGL](https://virgil3d.github.io/)**: 3D hardware virtualization passthrough for non-Adreno chipsets.
+* **[XFCE](https://xfce.org/)**: Fast, lightweight, touch-friendly desktop environment.
+* **[PulseAudio](https://www.freedesktop.org/wiki/Software/PulseAudio/)**: Seamless audio routing between container and host.
+* **[Magisk](https://topjohnwu.github.io/Magisk/) & [KernelSU](https://kernelsu.org/)**: Android root privilege management frameworks.
+* **[Debian](https://www.debian.org/)**, **[Fedora](https://fedoraproject.org/)**, and **[Arch Linux](https://archlinux.org/)**: Robust base Linux operating systems.
