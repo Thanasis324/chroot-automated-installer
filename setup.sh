@@ -3,7 +3,7 @@
 # Termux Automated Debian Chroot Setup Script
 # Features:
 #   1. Pre-installation of all dependencies & internet connectivity check
-#   2. Root verification & auto-elevation via installed sudo/tsu (BEFORE credentials)
+#   2. Root verification & auto-elevation via su/tsu (BEFORE credentials)
 #   3. Single interactive user credentials registration (username & password)
 #   4. Automated Python & PyPI chroot-distro setup
 #   5. Native Debian Chroot Installation via chroot-distro
@@ -16,7 +16,9 @@
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+[ -z "$SCRIPT_DIR" ] && SCRIPT_DIR="$PWD"
+SCRIPT_PATH="$SCRIPT_DIR/setup.sh"
 mkdir -p "$SCRIPT_DIR/scripts"
 source "$SCRIPT_DIR/scripts/autochroot_state.sh" 2>/dev/null || true
 export SETUP_MODE="true"
@@ -117,97 +119,88 @@ install_all_dependencies() {
         fi
     }
 
+    PREFIX_BIN="${PREFIX:-/data/data/com.termux/files/usr}/bin"
+    export PATH="$PREFIX_BIN:$HOME/.local/bin:$HOME/bin:$PATH:/system/bin:/system/xbin"
+
     echo ""
     echo -e "${CYAN}${BOLD}Would you like to install dependencies automatically?${RESET}"
     echo -e "${YELLOW}(Recommended Y for first time install. Select N to skip if already installed)${RESET}"
     read -p "Install dependencies? [Y/n]: " install_deps
     
     if [[ "$install_deps" =~ ^[Yy]$ ]] || [[ -z "$install_deps" ]]; then
+        log_info "Updating Termux package lists (apt update)..."
+        run_pkg "apt-get update -y >/dev/null 2>&1 || pkg update -y >/dev/null 2>&1" || true
 
-        # Attempt to use standard Termux package manager safely
-    log_info "Updating Termux package lists (apt update && apt full-upgrade)..."
-    
-    # First use apt directly to bypass curl/pkg errors on fresh installs
-    if ! run_pkg "apt update -y && apt full-upgrade -y"; then
-        log_warn "apt update failed. Falling back to pkg update..."
-        if ! run_pkg "pkg update -y && pkg upgrade -y"; then
-            log_warn "Initial package update returned non-zero code. Retrying repository update..."
-            sleep 2
-            if ! run_pkg "pkg update -y"; then
+        log_info "Enabling required repositories (root-repo, x11-repo, tur-repo)..."
+        run_pkg "pkg install -y root-repo x11-repo tur-repo >/dev/null 2>&1" || {
+            run_pkg "apt-get install -y root-repo x11-repo >/dev/null 2>&1" || true
+        }
+        run_pkg "apt-get update -y >/dev/null 2>&1 || pkg update -y >/dev/null 2>&1" || true
+
+        log_info "Installing Python, pip, tsu & core utilities..."
+        DEPS=(
+            "python"
+            "python-pip"
+            "tsu"
+            "pulseaudio"
+            "wget"
+            "curl"
+            "git"
+            "figlet"
+            "ncurses-utils"
+            "pciutils"
+            "tar"
+            "xz-utils"
+            "bzip2"
+            "unzip"
+            "procps"
+            "virglrenderer-android"
+            "mesa-vulkan-icd-freedreno"
+            "vulkan-loader"
+        )
+
+        FAILED_PACKAGES=()
+        log_info "Installing Termux packages..."
+        if ! run_pkg "pkg install -y ${DEPS[*]} >/dev/null 2>&1"; then
+            for dep in "${DEPS[@]}"; do
+                if ! run_pkg "pkg install -y \"$dep\" >/dev/null 2>&1"; then
+                    FAILED_PACKAGES+=("$dep")
+                fi
+            done
+        fi
+
+        # Optional / graphics alternatives
+        run_pkg "pkg install -y termux-x11-nightly >/dev/null 2>&1 || pkg install -y termux-x11 >/dev/null 2>&1" || true
+        run_pkg "pkg install -y vulkan-loader-generic >/dev/null 2>&1" || true
+        run_pkg "pkg install -y virglrenderer >/dev/null 2>&1" || true
+
+        if [ ${#FAILED_PACKAGES[@]} -gt 0 ]; then
+            log_warn "Some packages could not be installed directly: ${FAILED_PACKAGES[*]}"
+            log_info "Verifying internet connectivity..."
+            if ! ping -c 1 8.8.8.8 &>/dev/null && ! curl -s --connect-timeout 5 https://1.1.1.1 &>/dev/null; then
                 echo ""
-                log_error "Failed to update package repositories!"
+                log_error "Network unreachable during package installation!"
                 log_error "Please check your internet connection and try again."
                 echo ""
                 exit 1
             fi
         fi
-    fi
 
-    # Allow user to select the fastest mirror for subsequent downloads
-    log_info "Launching Termux Repo Manager (Select the fastest mirror for your region)..."
-    run_pkg "termux-change-repo" || true
+        log_info "Ensuring 'chroot-distro' Python package is installed..."
+        if ! command -v pip &>/dev/null && ! python3 -m pip --version &>/dev/null; then
+            python3 -m ensurepip --upgrade >/dev/null 2>&1 || run_pkg "pkg install -y python-pip >/dev/null 2>&1" || true
+        fi
+        python3 -m pip install --upgrade chroot-distro --break-system-packages 2>/dev/null || \
+        python3 -m pip install --upgrade chroot-distro 2>/dev/null || \
+        pip install chroot-distro --break-system-packages 2>/dev/null || \
+        pip install chroot-distro 2>/dev/null || \
+        log_warn "pip install chroot-distro completed with warning. Checking command availability..."
 
-    log_info "Enabling required repositories (root-repo, x11-repo, tur-repo)..."
-    run_pkg "pkg install -y root-repo x11-repo tur-repo 2>/dev/null" || true
-
-    log_info "Installing Python, pip, sudo, tsu & core utilities..."
-    DEPS=(
-        "python"
-        "sudo"
-        "tsu"
-        "pulseaudio"
-        "termux-x11-nightly"
-        "wget"
-        "curl"
-        "git"
-        "figlet"
-        "ncurses-utils"
-        "pciutils"
-        "tar"
-        "xz-utils"
-        "procps"
-        "virglrenderer-android"
-        "mesa-zink"
-        "mesa-vulkan-icd-freedreno"
-        "vulkan-loader-generic"
-    )
-
-    FAILED_PACKAGES=()
-    log_info "Bulk installing Termux packages to save time..."
-    if ! run_pkg "pkg install -y ${DEPS[*]}"; then
-        log_warn "Bulk installation failed. Falling back to sequential installation..."
-        for dep in "${DEPS[@]}"; do
-            log_info "Installing Termux package: $dep"
-            if ! run_pkg "pkg install -y \"$dep\""; then
-                log_warn "Package '$dep' installation failed. Attempting retry..."
-                if ! run_pkg "pkg install -y \"$dep\""; then
-                    FAILED_PACKAGES+=("$dep")
-                fi
+        for p in "$HOME/.local/bin/chroot-distro" "${PREFIX:-/data/data/com.termux/files/usr}/local/bin/chroot-distro"; do
+            if [ -f "$p" ] && [ ! -f "$PREFIX_BIN/chroot-distro" ]; then
+                ln -sf "$p" "$PREFIX_BIN/chroot-distro" 2>/dev/null || true
             fi
         done
-    fi
-
-    if [ ${#FAILED_PACKAGES[@]} -gt 0 ]; then
-        log_warn "Some packages could not be installed directly: ${FAILED_PACKAGES[*]}"
-        log_info "Verifying internet connectivity..."
-        if ! ping -c 1 8.8.8.8 &>/dev/null && ! curl -s --connect-timeout 5 https://1.1.1.1 &>/dev/null; then
-            echo ""
-            log_error "Network unreachable during package installation!"
-            log_error "Please check your internet connection and try again."
-            echo ""
-            exit 1
-        fi
-    fi
-
-    log_info "Installing 'chroot-distro' Python package via pip..."
-    python3 -m pip install --upgrade chroot-distro --break-system-packages 2>/dev/null || \
-    python3 -m pip install --upgrade chroot-distro 2>/dev/null || \
-    pip install chroot-distro --break-system-packages 2>/dev/null || \
-    pip install chroot-distro 2>/dev/null || \
-    log_warn "pip install chroot-distro completed with warning. Checking command availability..."
-
-    PREFIX_BIN="${PREFIX:-/data/data/com.termux/files/usr}/bin"
-    export PATH="$PATH:$HOME/.local/bin:$PREFIX_BIN:/system/bin"
 
         log_success "All Termux dependencies installed successfully."
     else
@@ -232,10 +225,18 @@ check_and_elevate_root() {
     # 2. Attempt root elevation cleanly without process crash
     log_info "Attempting root elevation via su / tsu..."
     export CALLER_PWD="${CALLER_PWD:-$PWD}"
+    SCRIPT_PATH="${SCRIPT_PATH:-$SCRIPT_DIR/setup.sh}"
+    if [ ! -f "$SCRIPT_PATH" ]; then
+        if [ -f "$PWD/setup.sh" ]; then
+            SCRIPT_PATH="$PWD/setup.sh"
+        elif [ -f "${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer/setup.sh" ]; then
+            SCRIPT_PATH="${PREFIX:-/data/data/com.termux/files/usr}/Chroot-Automated-Installer/setup.sh"
+        fi
+    fi
     PREFIX_BIN="${PREFIX:-/data/data/com.termux/files/usr}/bin"
     BASH_BIN="$PREFIX_BIN/bash"
     [ ! -x "$BASH_BIN" ] && BASH_BIN="$(command -v bash 2>/dev/null || echo "bash")"
-    ELEV_CMD="export PATH='$PREFIX_BIN:\$PATH'; CALLER_PWD='$CALLER_PWD' '$BASH_BIN' '$SCRIPT_PATH' --elevated"
+    ELEV_CMD="export PATH='$PREFIX_BIN:\$HOME/.local/bin:\$PATH'; CALLER_PWD='$CALLER_PWD' '$BASH_BIN' '$SCRIPT_PATH' --elevated"
     if [ -n "$*" ]; then
         ELEV_CMD="$ELEV_CMD $*"
     fi
@@ -264,33 +265,21 @@ check_and_elevate_root() {
             exit 0
         fi
     fi
-
-    # 3. sudo fallback
-    if command -v sudo &>/dev/null; then
-        sudo CALLER_PWD="$CALLER_PWD" bash "$SCRIPT_PATH" --elevated "$@"
-        ELEV_STATUS=$?
-        if [ $ELEV_STATUS -eq 0 ]; then
-            exit 0
-        fi
-    fi
     set -e
 
     # 3. If root elevation failed, display the formatted ROOT ACCESS REQUIRED prompt banner
     echo ""
-    log_error "Root access (UID 0) is REQUIRED to set up Debian chroot environment."
+    log_error "Root access (UID 0) is REQUIRED to set up Linux chroot environment."
     echo ""
     echo -e "${YELLOW}${BOLD}================================================================================"
     echo "                         ROOT ACCESS REQUIRED                                   "
     echo "================================================================================"
     echo -e "${WHITE}Please choose one of the following options to proceed:${RESET}"
     echo ""
-    echo -e "${CYAN}Option 1:${RESET} Run the script manually using sudo:"
-    echo -e "          ${GREEN}sudo ./setup.sh${RESET}"
-    echo ""
-    echo -e "${CYAN}Option 2:${RESET} Add / grant Termux root permissions in your Root Manager application:"
+    echo -e "${CYAN}Option 1:${RESET} Add / grant Termux superuser (root) permissions in your Root Manager:"
     echo -e "          ${WHITE}(Magisk, KernelSU, APatch, or SuperSU)${RESET}"
     echo ""
-    echo -e "${CYAN}Option 3:${RESET} Root your Android device if it is not currently rooted."
+    echo -e "${CYAN}Option 2:${RESET} Root your Android device if it is not currently rooted."
     echo -e "${YELLOW}${BOLD}================================================================================"
     echo -e "${RESET}"
     exit 1
@@ -622,14 +611,6 @@ configure_chroot_system() {
     log_info "Injecting configuration script directly into ${SELECTED_DISTRO^^} rootfs..."
 
     SETUP_B64=$(base64 -w0 "$DISTRO_SETUP_SCRIPT" 2>/dev/null || base64 "$DISTRO_SETUP_SCRIPT" | tr -d '\r\n')
-    
-    # Inject local Mesa drivers zip if it exists (for offline/developer testing on pure Debian)
-    if [ "$DISTRO_FAMILY" != "ubuntu" ]; then
-        ROOTFS_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/chroot-distro/installed-rootfs/$SELECTED_DISTRO"
-        if [ -d "$ROOTFS_DIR/tmp" ] && [ -f "$SCRIPT_DIR/mesa-debs-trixie.zip" ]; then
-            cp "$SCRIPT_DIR/mesa-debs-trixie.zip" "$ROOTFS_DIR/tmp/mesa-debs-trixie.zip" 2>/dev/null || true
-        fi
-    fi
 
     $DISTRO_CMD login $SELECTED_DISTRO -- bash -c "
         export SETUP_MODE='$SETUP_MODE'
@@ -730,7 +711,7 @@ verify_and_finish() {
     echo "--------------------------------------------------------------------------------"
     echo -e "${YELLOW}${BOLD}HOW TO RUN:${RESET}"
     echo -e "${WHITE}  - Open the ${CYAN}Termux:X11${WHITE} app on your Android device."
-    echo -e "${WHITE}  - Run launcher globally (${RED}${BOLD}Do NOT use sudo${RESET}${WHITE}): ${GREEN}autochroot start${WHITE}"
+    echo -e "${WHITE}  - Run launcher globally: ${GREEN}autochroot start${WHITE}"
     echo "================================================================================"
     echo -e "${RESET}"
 }
@@ -774,8 +755,8 @@ main() {
     else
         # First pass (normal user)
         if [ "$(id -u)" -eq 0 ]; then
-            echo -e "${RED}${BOLD}[ERROR] Please run this script WITHOUT sudo!${RESET}"
-            echo -e "${WHITE}The script will automatically install Termux packages and then ask for root privileges when needed.${RESET}"
+            echo -e "${RED}${BOLD}[ERROR] Please run this script as your standard Termux user (not as root)!${RESET}"
+            echo -e "${WHITE}The script will automatically configure packages and elevate with root privileges when needed.${RESET}"
             exit 1
         fi
         print_banner

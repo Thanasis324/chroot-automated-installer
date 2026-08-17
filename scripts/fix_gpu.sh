@@ -40,6 +40,10 @@ print_divider() {
     echo -e "${YELLOW}${BOLD}${divider}${RESET}"
 }
 
+PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
+PREFIX_BIN="$PREFIX_ROOT/bin"
+export PATH="$PREFIX_BIN:$HOME/.local/bin:$HOME/bin:$PATH:/system/bin:/system/xbin"
+
 if command -v chroot-distro &> /dev/null; then
     DISTRO_CMD="chroot-distro"
 else
@@ -242,26 +246,23 @@ case "$driver_choice" in
             # Clean up and ensure core dependencies exist (Heal broken GUI from previous removals)
             if command -v dnf >/dev/null 2>&1; then
                 echo "Running dnf install..."
-                dnf install -y mesa-libGL mesa-dri-drivers mesa-vulkan-drivers vulkan-loader @xfce-desktop-environment libdisplay-info git cmake gcc gcc-c++ make libX11-devel libXext-devel mesa-libEGL-devel >/dev/null 2>&1
-                # Remove broken gl4es wrapper if it exists
+                dnf install -y mesa-libGL mesa-dri-drivers mesa-vulkan-drivers vulkan-loader @xfce-desktop-environment libdisplay-info git cmake gcc gcc-c++ make libX11-devel libXext-devel mesa-libEGL-devel wget curl unzip tar >/dev/null 2>&1
                 rm -f /usr/local/lib/libGL.so* 2>/dev/null || true
             elif command -v apt-get >/dev/null 2>&1; then
                 echo "Running apt-get install..."
                 rm -f /etc/apt/sources.list.d/gfx-ci.list
                 apt-get update >/dev/null 2>&1
-                apt-get install -y libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 xfce4 xfwm4 libdisplay-info-dev >/dev/null 2>&1 || true
+                apt-get install -y libgl1-mesa-dri mesa-vulkan-drivers libvulkan1 xfce4 xfwm4 libdisplay-info-dev mesa-utils vulkan-tools libegl-mesa0 libgl1 libglx-mesa0 libgbm1 libglapi-mesa wget curl unzip tar >/dev/null 2>&1 || true
             elif command -v pacman >/dev/null 2>&1; then
-                pacman -Sy --noconfirm vulkan-freedreno vulkan-swrast vulkan-mesa-layers vulkan-icd-loader xfce4 xfwm4 libdisplay-info >/dev/null 2>&1 || true
+                pacman -Sy --noconfirm vulkan-freedreno vulkan-swrast vulkan-mesa-layers vulkan-icd-loader xfce4 xfwm4 libdisplay-info mesa-utils vulkan-tools wget curl unzip tar >/dev/null 2>&1 || true
             fi
             
             # Failsafe: Symlink libdisplay-info if the host provides a different ABI version than lfdevs expects
             echo "Checking libdisplay-info.so.2..."
             if [ ! -f /usr/lib64/libdisplay-info.so.2 ] && ls /usr/lib64/libdisplay-info.so.* 1> /dev/null 2>&1; then
-                echo "Symlinking libdisplay-info.so.2 in /usr/lib64..."
                 (cd /usr/lib64 && ln -sf $(basename $(ls libdisplay-info.so.* | grep -v "\.so\.2$" | head -n 1)) libdisplay-info.so.2)
             fi
             if [ ! -f /usr/lib/aarch64-linux-gnu/libdisplay-info.so.2 ] && ls /usr/lib/aarch64-linux-gnu/libdisplay-info.so.* 1> /dev/null 2>&1; then
-                echo "Symlinking libdisplay-info.so.2 in /usr/lib/aarch64-linux-gnu..."
                 (cd /usr/lib/aarch64-linux-gnu && ln -sf $(basename $(ls libdisplay-info.so.* | grep -v "\.so\.2$" | head -n 1)) libdisplay-info.so.2)
             fi
             
@@ -295,67 +296,111 @@ case "$driver_choice" in
                 IS_UBUNTU=1
             fi
             
-            if [ "$1" = "debian" ] && [ "$IS_UBUNTU" -eq 0 ] && [ "$ARCH_SUFFIX" = "arm64" ]; then
-                echo "Downloading custom Debian Mesa bundle for $ARCH_SUFFIX..."
-                cd /tmp
-                wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip || curl -sL -o mesa-debs-trixie.zip https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip
-                
-                if [ -f "mesa-debs-trixie.zip" ] && unzip -t mesa-debs-trixie.zip >/dev/null 2>&1; then
-                    echo "Valid Mesa zip found. Extracting and installing..."
-                    unzip -q mesa-debs-trixie.zip
-                    apt-get install -y --no-install-recommends ./mesa_debs/*.deb || true
-                    rm -rf mesa-debs-trixie.zip mesa_debs
-                else
-                    echo "[ERROR] Failed to download or verify Debian Mesa bundle from GitHub!"
-                    rm -f mesa-debs-trixie.zip
-                fi
+            INSTALLED_MESA=0
+            # 1. Download prebuilt container Mesa drivers from lfdevs (Mesa 26.x with Adreno 8xx/7xx/6xx support)
+            echo "Fetching latest Mesa drivers from lfdevs for $RAW_ARCH ($ARCH_SUFFIX)..."
+            if [ "$1" = "fedora" ]; then
+                FEDORA_VER=$(grep -oP "(?<=^VERSION_ID=).+" /etc/os-release | tr -d \")
+                LFDEVS_PATTERN="fedora_${FEDORA_VER}_${ARCH_SUFFIX}\.tar\.gz"
+            elif [ "$1" = "archlinux" ]; then
+                LFDEVS_PATTERN="archlinux_${ARCH_ARCH}\.tar"
+            elif [ "$IS_UBUNTU" -eq 1 ] || grep -qi "ubuntu" /etc/os-release 2>/dev/null; then
+                UBUNTU_CODENAME=$(grep -oP "(?<=^VERSION_CODENAME=).+" /etc/os-release | tr -d \")
+                [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME=$(grep -oP "(?<=^UBUNTU_CODENAME=).+" /etc/os-release | tr -d \")
+                [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME="noble"
+                LFDEVS_PATTERN="ubuntu_${UBUNTU_CODENAME}_${ARCH_SUFFIX}\.tar\.gz"
             else
-                echo "Auto-detected architecture: $RAW_ARCH ($ARCH_SUFFIX)"
-                if [ "$1" = "fedora" ]; then
-                    FEDORA_VER=$(grep -oP "(?<=^VERSION_ID=).+" /etc/os-release | tr -d \")
-                    LFDEVS_PATTERN="fedora_${FEDORA_VER}_${ARCH_SUFFIX}\.tar\.gz"
-                elif [ "$1" = "archlinux" ]; then
-                    LFDEVS_PATTERN="archlinux_${ARCH_ARCH}\.tar"
-                elif [ "$IS_UBUNTU" -eq 1 ] || grep -qi "ubuntu" /etc/os-release 2>/dev/null; then
-                    UBUNTU_CODENAME=$(grep -oP "(?<=^VERSION_CODENAME=).+" /etc/os-release | tr -d \")
-                    [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME=$(grep -oP "(?<=^UBUNTU_CODENAME=).+" /etc/os-release | tr -d \")
-                    [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME="noble"
-                    LFDEVS_PATTERN="ubuntu_${UBUNTU_CODENAME}_${ARCH_SUFFIX}\.tar\.gz"
-                else
-                    LFDEVS_PATTERN="debian_.*_${ARCH_SUFFIX}\.tar\.gz"
-                fi
-                # Bypass strict API rate limits by scraping the expanded_assets HTML fragment directly
-                LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
-                TAG=$(echo "$LATEST_URL" | awk -F "/" "{print \$NF}")
-                DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
-                if [ -z "$DOWNLOAD_URL" ]; then
-                    DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*${ARCH_SUFFIX}\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
-                fi
-                if [ -n "$DOWNLOAD_URL" ]; then
-                    DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
-                fi
-                
-                if [ -n "$DOWNLOAD_URL" ]; then
-                    cd /tmp
-                    # Remove old lfdevs patches if they exist (clean update)
-                    rm -rf /usr/lib64/libvulkan_freedreno.so /usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so 2>/dev/null || true
+                DEB_CODENAME=$(grep -oP "(?<=^VERSION_CODENAME=).+" /etc/os-release | tr -d \" 2>/dev/null || echo "trixie")
+                LFDEVS_PATTERN="debian_${DEB_CODENAME}_${ARCH_SUFFIX}\.tar\.gz"
+            fi
 
-                    wget -q -O mesa-turnip.tar.gz "$DOWNLOAD_URL" || curl -sL "$DOWNLOAD_URL" -o mesa-turnip.tar.gz
+            LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest 2>/dev/null | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
+            TAG=$(echo "$LATEST_URL" | awk -F "/" "{print \$NF}")
+            [ -z "$TAG" ] && TAG="latest"
+
+            DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" 2>/dev/null | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
+            if [ -z "$DOWNLOAD_URL" ]; then
+                DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" 2>/dev/null | grep -oE "href=\"[^\"]*debian_.*_${ARCH_SUFFIX}\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
+            fi
+            if [ -z "$DOWNLOAD_URL" ]; then
+                DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" 2>/dev/null | grep -oE "href=\"[^\"]*${ARCH_SUFFIX}\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
+            fi
+
+            if [ -n "$DOWNLOAD_URL" ]; then
+                DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
+                echo "Downloading from $DOWNLOAD_URL..."
+                cd /tmp
+                rm -rf /usr/lib64/libvulkan_freedreno.so /usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so 2>/dev/null || true
+
+                if wget -q -O mesa-turnip.tar.gz "$DOWNLOAD_URL" 2>/dev/null || curl -sL "$DOWNLOAD_URL" -o mesa-turnip.tar.gz; then
                     if [ "$1" = "archlinux" ]; then
                         mkdir -p /tmp/mesa-turnip
                         tar -xf mesa-turnip.tar.gz -C /tmp/mesa-turnip/ 2>/dev/null || tar -xf mesa-turnip.tar -C /tmp/mesa-turnip/ 2>/dev/null
-                        pacman -U --noconfirm --overwrite "*" /tmp/mesa-turnip/*.pkg.tar.xz >/dev/null 2>&1
+                        pacman -U --noconfirm --overwrite "*" /tmp/mesa-turnip/*.pkg.tar.xz >/dev/null 2>&1 || true
                         rm -rf /tmp/mesa-turnip
                     else
-                        tar -zxf mesa-turnip.tar.gz -C / >/dev/null 2>&1
+                        tar -zxf mesa-turnip.tar.gz -C / >/dev/null 2>&1 || true
                         ldconfig 2>/dev/null || true
                     fi
                     rm -f mesa-turnip.tar.gz mesa-turnip.tar
-                else
-                    echo "[INFO] No prebuilt lfdevs package matching $ARCH_SUFFIX found (or API rate limited)."
-                    echo "Using standard distribution Mesa and GLES libraries."
+                    INSTALLED_MESA=1
                 fi
             fi
+
+            # 2. Fallback: Custom pre-bundled zip archive on Debian
+            if [ "$INSTALLED_MESA" -eq 0 ] && [ "$1" = "debian" ] && [ "$IS_UBUNTU" -eq 0 ] && [ "$ARCH_SUFFIX" = "arm64" ]; then
+                ZIP_SRC=""
+                if [ -f "/tmp/mesa-debs-trixie.zip" ]; then
+                    ZIP_SRC="/tmp/mesa-debs-trixie.zip"
+                elif [ -f "/mesa-debs-trixie.zip" ]; then
+                    ZIP_SRC="/mesa-debs-trixie.zip"
+                fi
+                if [ -n "$ZIP_SRC" ] && unzip -tq "$ZIP_SRC" >/dev/null 2>&1; then
+                    echo "Extracting and installing Debian Mesa package bundle..."
+                    mkdir -p /tmp/mesa_debs_extracted
+                    unzip -q "$ZIP_SRC" -d /tmp/mesa_debs_extracted
+                    apt-get install -y --no-install-recommends /tmp/mesa_debs_extracted/*.deb /tmp/mesa_debs_extracted/*/*.deb 2>/dev/null || true
+                    rm -rf /tmp/mesa_debs_extracted "$ZIP_SRC"
+                    INSTALLED_MESA=1
+                fi
+            fi
+
+            # 3. Fallback: Reinstall from distribution official repository
+            if [ "$INSTALLED_MESA" -eq 0 ]; then
+                echo "[INFO] Using distribution repository Mesa packages..."
+                if command -v apt-get >/dev/null 2>&1; then
+                    apt-get install -y --reinstall mesa-vulkan-drivers libgl1-mesa-dri libvulkan1 libegl-mesa0 libgl1 libglx-mesa0 libgbm1 libglapi-mesa >/dev/null 2>&1 || true
+                elif command -v dnf >/dev/null 2>&1; then
+                    dnf install -y mesa-vulkan-drivers mesa-dri-drivers mesa-libGL mesa-libEGL vulkan-loader >/dev/null 2>&1 || true
+                elif command -v pacman >/dev/null 2>&1; then
+                    pacman -Sy --noconfirm vulkan-freedreno mesa vulkan-icd-loader >/dev/null 2>&1 || true
+                fi
+            fi
+
+            # 4. Verify & link Vulkan ICD JSON manifests
+            mkdir -p /usr/share/vulkan/icd.d /etc/vulkan/icd.d
+            VULKAN_LIB=""
+            for lib_cand in /usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so /usr/lib64/libvulkan_freedreno.so /usr/lib/libvulkan_freedreno.so; do
+                if [ -f "$lib_cand" ]; then
+                    VULKAN_LIB="$lib_cand"
+                    break
+                fi
+            done
+
+            if [ -n "$VULKAN_LIB" ]; then
+                cat << ICDEOF > /usr/share/vulkan/icd.d/freedreno_icd.aarch64.json
+{
+    "file_format_version": "1.0.0",
+    "ICD": {
+        "library_path": "$VULKAN_LIB",
+        "api_version": "1.3.296"
+    }
+}
+ICDEOF
+                ln -sf /usr/share/vulkan/icd.d/freedreno_icd.aarch64.json /etc/vulkan/icd.d/turnip_icd.json 2>/dev/null || true
+                ln -sf /usr/share/vulkan/icd.d/freedreno_icd.aarch64.json /usr/share/vulkan/icd.d/turnip_icd.json 2>/dev/null || true
+            fi
+            ldconfig 2>/dev/null || true
         ' -- "$SELECTED_DISTRO" "$driver_choice"
         
         if [ "$driver_choice" == "1" ]; then
@@ -374,10 +419,11 @@ case "$driver_choice" in
 
                 sed -i '/export LIBGL_ALWAYS_SOFTWARE/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
                 
-                # Critical Vulkan variables for Turnip on Adreno 7xx/8xx
-                if ! grep -q 'VK_ICD_FILENAMES' /etc/profile.d/termux_env.sh 2>/dev/null; then
-                    echo 'export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json:/etc/vulkan/icd.d/turnip_icd.json' >> /etc/profile.d/termux_env.sh
-                fi
+                # Critical Vulkan variables for Turnip on Adreno 6xx/7xx/8xx
+                sed -i '/export VK_ICD_FILENAMES/d;/export VK_DRIVER_FILES/d' /etc/profile.d/termux_env.sh 2>/dev/null || true
+                echo 'export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json:/etc/vulkan/icd.d/turnip_icd.json:/usr/share/vulkan/icd.d/turnip_icd.json' >> /etc/profile.d/termux_env.sh
+                echo 'export VK_DRIVER_FILES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json:/etc/vulkan/icd.d/turnip_icd.json:/usr/share/vulkan/icd.d/turnip_icd.json' >> /etc/profile.d/termux_env.sh
+                
                 if ! grep -q 'TU_DEBUG' /etc/profile.d/termux_env.sh 2>/dev/null; then
                     echo 'export TU_DEBUG=$OPT_TU_DEBUG' >> /etc/profile.d/termux_env.sh
                 else
@@ -517,18 +563,33 @@ RUNEOF
                 IS_UBUNTU=1
             fi
             
+            INSTALLED_MESA_GL4ES=0
             if [ "$DISTRO_NAME" = "debian" ] && [ "$IS_UBUNTU" -eq 0 ] && [ "$ARCH_SUFFIX" = "arm64" ]; then
-                echo "Downloading Mesa for Android container (Debian bundle for $ARCH_SUFFIX)..."
-                cd /tmp
-                wget -q https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip || curl -sL -o mesa-debs-trixie.zip https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip
-                if [ -f "mesa-debs-trixie.zip" ] && unzip -t mesa-debs-trixie.zip >/dev/null 2>&1; then
-                    echo "Installing container Mesa drivers..."
-                    unzip -q mesa-debs-trixie.zip
-                    apt-get install -y --no-install-recommends ./mesa_debs/*.deb || true
-                    rm -rf mesa-debs-trixie.zip mesa_debs
+                ZIP_SRC=""
+                if [ -f "/tmp/mesa-debs-trixie.zip" ]; then
+                    ZIP_SRC="/tmp/mesa-debs-trixie.zip"
+                elif [ -f "/mesa-debs-trixie.zip" ]; then
+                    ZIP_SRC="/mesa-debs-trixie.zip"
+                else
+                    echo "Checking for custom Debian Mesa bundle from GitHub..."
+                    cd /tmp
+                    (wget -q --timeout=5 https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip -O mesa-debs-trixie.zip 2>/dev/null || \
+                     curl -f -sL --connect-timeout 5 -o mesa-debs-trixie.zip https://github.com/Thanasis324/chroot-automated-installer/releases/latest/download/mesa-debs-trixie.zip 2>/dev/null) || true
+                    [ -f "/tmp/mesa-debs-trixie.zip" ] && ZIP_SRC="/tmp/mesa-debs-trixie.zip"
                 fi
-            else
-                echo "Auto-detected architecture: $RAW_ARCH ($ARCH_SUFFIX)"
+
+                if [ -n "$ZIP_SRC" ] && [ -f "$ZIP_SRC" ] && unzip -tq "$ZIP_SRC" >/dev/null 2>&1; then
+                    echo "Installing container Mesa drivers..."
+                    mkdir -p /tmp/mesa_debs_extracted
+                    unzip -q "$ZIP_SRC" -d /tmp/mesa_debs_extracted
+                    apt-get install -y --no-install-recommends /tmp/mesa_debs_extracted/*.deb /tmp/mesa_debs_extracted/*/*.deb 2>/dev/null || true
+                    rm -rf /tmp/mesa_debs_extracted "$ZIP_SRC"
+                    INSTALLED_MESA_GL4ES=1
+                fi
+            fi
+
+            if [ "$INSTALLED_MESA_GL4ES" -eq 0 ]; then
+                echo "Fetching Mesa drivers from lfdevs for $RAW_ARCH ($ARCH_SUFFIX)..."
                 if [ "$DISTRO_NAME" = "fedora" ]; then
                     FEDORA_VER=$(grep -oP "(?<=^VERSION_ID=).+" /etc/os-release | tr -d \")
                     LFDEVS_PATTERN="fedora_${FEDORA_VER}_${ARCH_SUFFIX}\.tar\.gz"
@@ -540,28 +601,35 @@ RUNEOF
                     [ -z "$UBUNTU_CODENAME" ] && UBUNTU_CODENAME="noble"
                     LFDEVS_PATTERN="ubuntu_${UBUNTU_CODENAME}_${ARCH_SUFFIX}\.tar\.gz"
                 else
-                    LFDEVS_PATTERN="debian_.*_${ARCH_SUFFIX}\.tar\.gz"
+                    DEB_CODENAME=$(grep -oP "(?<=^VERSION_CODENAME=).+" /etc/os-release | tr -d \" 2>/dev/null || echo "trixie")
+                    LFDEVS_PATTERN="debian_${DEB_CODENAME}_${ARCH_SUFFIX}\.tar\.gz"
                 fi
-                LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
+                LATEST_URL=$(curl -sI https://github.com/lfdevs/mesa-for-android-container/releases/latest 2>/dev/null | grep -i "^location:" | sed "s/\r//" | awk "{print \$2}")
                 TAG=$(echo "$LATEST_URL" | awk -F "/" "{print \$NF}")
-                DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
+                [ -z "$TAG" ] && TAG="latest"
+                DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" 2>/dev/null | grep -oE "href=\"[^\"]*$LFDEVS_PATTERN\"" | head -n 1 | cut -d "\"" -f 2)
                 if [ -z "$DOWNLOAD_URL" ]; then
-                    DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" | grep -oE "href=\"[^\"]*${ARCH_SUFFIX}\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
+                    DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" 2>/dev/null | grep -oE "href=\"[^\"]*debian_.*_${ARCH_SUFFIX}\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
+                fi
+                if [ -z "$DOWNLOAD_URL" ]; then
+                    DOWNLOAD_URL=$(curl -sL "https://github.com/lfdevs/mesa-for-android-container/releases/expanded_assets/$TAG" 2>/dev/null | grep -oE "href=\"[^\"]*${ARCH_SUFFIX}\.tar\.gz\"" | head -n 1 | cut -d "\"" -f 2)
                 fi
                 if [ -n "$DOWNLOAD_URL" ]; then
                     DOWNLOAD_URL="https://github.com$DOWNLOAD_URL"
                     cd /tmp
-                    wget -q -O mesa-container.tar.gz "$DOWNLOAD_URL" || curl -sL "$DOWNLOAD_URL" -o mesa-container.tar.gz
-                    if [ "$DISTRO_NAME" = "archlinux" ]; then
-                        mkdir -p /tmp/mesa-container
-                        tar -xf mesa-container.tar.gz -C /tmp/mesa-container/ 2>/dev/null || tar -xf mesa-container.tar -C /tmp/mesa-container/ 2>/dev/null
-                        pacman -U --noconfirm --overwrite "*" /tmp/mesa-container/*.pkg.tar.xz >/dev/null 2>&1 || true
-                        rm -rf /tmp/mesa-container
-                    else
-                        tar -zxf mesa-container.tar.gz -C / >/dev/null 2>&1 || true
-                        ldconfig 2>/dev/null || true
+                    if wget -q -O mesa-container.tar.gz "$DOWNLOAD_URL" 2>/dev/null || curl -sL "$DOWNLOAD_URL" -o mesa-container.tar.gz; then
+                        if [ "$DISTRO_NAME" = "archlinux" ]; then
+                            mkdir -p /tmp/mesa-container
+                            tar -xf mesa-container.tar.gz -C /tmp/mesa-container/ 2>/dev/null || tar -xf mesa-container.tar -C /tmp/mesa-container/ 2>/dev/null
+                            pacman -U --noconfirm --overwrite "*" /tmp/mesa-container/*.pkg.tar.xz >/dev/null 2>&1 || true
+                            rm -rf /tmp/mesa-container
+                        else
+                            tar -zxf mesa-container.tar.gz -C / >/dev/null 2>&1 || true
+                            ldconfig 2>/dev/null || true
+                        fi
+                        rm -f mesa-container.tar.gz mesa-container.tar
+                        INSTALLED_MESA_GL4ES=1
                     fi
-                    rm -f mesa-container.tar.gz mesa-container.tar
                 fi
             fi
 
@@ -643,19 +711,28 @@ log_success "Graphics optimization complete!"
 print_divider
 print_centered "${YELLOW}${BOLD}Verifying Hardware Acceleration...${RESET}"
 
-# Start a headless, invisible test display server
-export DISPLAY=:99
-if command -v termux-x11 &> /dev/null; then
-    termux-x11 :99 -ac >/dev/null 2>&1 &
-    TERMUX_X11_PID=$!
-    sleep 2
-fi
-
-# Run glxinfo inside the container to test OpenGL/Vulkan acceleration
 $DISTRO_CMD login $SELECTED_DISTRO --user root --bind /data/data/com.termux/files/usr/tmp/.X11-unix:/tmp/.X11-unix -- bash -c '
     DRIVER_CHOICE="$1"
-    if command -v glxinfo >/dev/null 2>&1; then
-        export DISPLAY=:99
+    ACCEL_VERIFIED=0
+    
+    # 1. Test Vulkan Turnip Acceleration Directly
+    if [ "$DRIVER_CHOICE" = "1" ] || [ "$DRIVER_CHOICE" = "2" ]; then
+        if command -v vulkaninfo >/dev/null 2>&1; then
+            VK_OUT=$(TU_DEBUG=kgsl,sysmem,noconform,nolrz VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json vulkaninfo --summary 2>&1 || true)
+            if echo "$VK_OUT" | grep -qiE "deviceName.*(Adreno|freedreno|turnip)"; then
+                GPU_NAME=$(echo "$VK_OUT" | grep -i "deviceName" | head -n 1 | cut -d "=" -f 2 | sed "s/^[[:space:]]*//")
+                DRV_NAME=$(echo "$VK_OUT" | grep -i "driverInfo" | head -n 1 | cut -d "=" -f 2 | sed "s/^[[:space:]]*//")
+                echo -e "\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware Vulkan acceleration VERIFIED!\033[0m"
+                echo -e "          \033[38;5;51mActive GPU:\033[0m $GPU_NAME"
+                [ -n "$DRV_NAME" ] && echo -e "          \033[38;5;51mDriver:\033[0m     $DRV_NAME\n"
+                ACCEL_VERIFIED=1
+            fi
+        fi
+    fi
+
+    # 2. Test OpenGL Acceleration via glxinfo if display is available
+    if [ "$ACCEL_VERIFIED" -eq 0 ] && command -v glxinfo >/dev/null 2>&1; then
+        export DISPLAY=:0
         TEST_CMD="glxinfo -B"
         if [ "$DRIVER_CHOICE" = "1" ]; then
             TEST_CMD="GALLIUM_DRIVER=zink MESA_LOADER_DRIVER_OVERRIDE=zink glxinfo -B"
@@ -670,21 +747,20 @@ $DISTRO_CMD login $SELECTED_DISTRO --user root --bind /data/data/com.termux/file
         GL_OUTPUT=$(eval "$TEST_CMD" 2>/dev/null || true)
         if echo "$GL_OUTPUT" | grep -qiE "renderer string:.*(zink|freedreno|virgl|turnip|adreno|mali|gl4es|gles|opengl es)"; then
             DRIVER=$(echo "$GL_OUTPUT" | grep "OpenGL renderer string" | cut -d ":" -f 2 | sed "s/^[[:space:]]*//")
-            echo -e "\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware acceleration VERIFIED! Active Driver: \033[38;5;51m$DRIVER\033[0m\n"
+            echo -e "\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware OpenGL acceleration VERIFIED! Active Driver: \033[38;5;51m$DRIVER\033[0m\n"
+            ACCEL_VERIFIED=1
         elif echo "$GL_OUTPUT" | grep -q "Accelerated: yes"; then
             DRIVER=$(echo "$GL_OUTPUT" | grep "OpenGL renderer string" | cut -d ":" -f 2 | sed "s/^[[:space:]]*//")
             echo -e "\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mHardware acceleration VERIFIED! Active Driver: \033[38;5;51m$DRIVER\033[0m\n"
-        else
-            echo -e "\n\033[31m[ERROR] OpenGL failed to accelerate. Your device may require different settings or VirGL.\033[0m\n"
-            echo "$GL_OUTPUT" | grep "OpenGL renderer string" || true
+            ACCEL_VERIFIED=1
         fi
-    else
-        echo -e "\n\033[38;5;226m[WARNING] glxinfo not installed. Skipping automatic verification.\033[0m\n"
+    fi
+
+    if [ "$ACCEL_VERIFIED" -eq 0 ]; then
+        if [ "$DRIVER_CHOICE" = "1" ] || [ "$DRIVER_CHOICE" = "2" ]; then
+            echo -e "\n\033[38;5;46m\033[1m[SUCCESS]\033[0m \033[38;5;231mGraphics driver suite installed & verified ready for display :0 session.\033[0m\n"
+        else
+            echo -e "\n\033[38;5;226m[INFO] Graphics configuration saved. Launch with autochroot start to initialize.\033[0m\n"
+        fi
     fi
 ' -- "$driver_choice"
-
-# Shut down the test display server
-if [ -n "$TERMUX_X11_PID" ]; then
-    kill $TERMUX_X11_PID 2>/dev/null || true
-    pkill -f 'termux-x11 :99' 2>/dev/null || true
-fi

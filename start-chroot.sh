@@ -9,8 +9,10 @@ CYAN="\033[38;5;51m"
 YELLOW="\033[38;5;226m"
 RESET="\033[0m"
 
-PREFIX_VAR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib"
-export PATH="$PATH:$HOME/.local/bin:/data/data/com.termux/files/usr/bin"
+PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
+PREFIX_BIN="$PREFIX_ROOT/bin"
+PREFIX_VAR="$PREFIX_ROOT/var/lib"
+export PATH="$PREFIX_BIN:$HOME/.local/bin:$HOME/bin:$PATH:/system/bin:/system/xbin"
 DISTRO_CMD="chroot-distro"
 INSTALLED_DISTROS=()
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"

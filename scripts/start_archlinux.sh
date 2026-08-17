@@ -10,6 +10,10 @@ GREEN="\033[38;5;46m"
 YELLOW="\033[38;5;226m"
 RESET="\033[0m"
 
+PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
+PREFIX_BIN="$PREFIX_ROOT/bin"
+export PATH="$PREFIX_BIN:$HOME/.local/bin:$HOME/bin:$PATH:/system/bin:/system/xbin"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/autochroot_state.sh" 2>/dev/null || true
 

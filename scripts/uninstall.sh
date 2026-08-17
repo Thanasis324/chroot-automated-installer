@@ -38,6 +38,10 @@ print_divider() {
     echo -e "${YELLOW}${BOLD}${divider}${RESET}"
 }
 
+PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
+PREFIX_BIN="$PREFIX_ROOT/bin"
+export PATH="$PREFIX_BIN:$HOME/.local/bin:$HOME/bin:$PATH:/system/bin:/system/xbin"
+
 if command -v chroot-distro &> /dev/null; then
     DISTRO_CMD="chroot-distro"
 else

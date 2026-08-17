@@ -11,33 +11,35 @@ RED="\033[31m"
 RESET="\033[0m"
 
 REQUESTED_TAG=""
-BUILD_MESA_RELEASE_ASSET=0
 
 # --- Secret Dev Utility Mode ---
 if [ "$1" == "-d" ]; then
     shift
-    while [ "$#" -gt 0 ]; do
-        case "$1" in
-            -m) BUILD_MESA_RELEASE_ASSET=1 ;;
-            *)
-                echo -e "${RED}Usage: autochroot update -d [-m]${RESET}"
-                exit 1
-                ;;
-        esac
-        shift
-    done
 
     echo -e "${CYAN}${BOLD}=== Developer Release Mode ===${RESET}"
     PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
     REPO_DIR="$PREFIX_ROOT/Chroot-Automated-Installer"
 
-    if [ ! -d "$REPO_DIR/.git" ]; then
-        echo -e "${RED}[ERROR] Managed Autochroot repository not found at $REPO_DIR.${RESET}"
-        echo -e "Run the installer first so ${WHITE}autochroot update -d${RESET} uses the hidden installation copy."
-        exit 1
+    if [ -d "$PWD/.git" ]; then
+        REPO_DIR="$PWD"
+    elif [ -d "$HOME/Chroot-automated-installer/.git" ]; then
+        REPO_DIR="$HOME/Chroot-automated-installer"
+    elif [ -d "$HOME/chroot-automated-installer/.git" ]; then
+        REPO_DIR="$HOME/chroot-automated-installer"
+    elif [ -d "$REPO_DIR/.git" ]; then
+        :
+    else
+        if [ -d "$HOME/Chroot-automated-installer" ]; then
+            REPO_DIR="$HOME/Chroot-automated-installer"
+        elif [ -d "$HOME/chroot-automated-installer" ]; then
+            REPO_DIR="$HOME/chroot-automated-installer"
+        fi
+        echo -e "${YELLOW}Initializing Git repository at $REPO_DIR...${RESET}"
+        (cd "$REPO_DIR" && git init -b main 2>/dev/null || (git init && git branch -M main))
+        (cd "$REPO_DIR" && git remote add origin https://github.com/Thanasis324/chroot-automated-installer.git 2>/dev/null || true)
     fi
 
-    echo -e "${CYAN}Using managed repository: $REPO_DIR${RESET}"
+    echo -e "${CYAN}Using repository: $REPO_DIR${RESET}"
     echo -e "What would you like to do?"
     echo -e "  ${WHITE}1)${RESET} Commit only (push changes to main)"
     echo -e "  ${WHITE}2)${RESET} Release only (create tag and GitHub release)"
@@ -51,9 +53,9 @@ if [ "$1" == "-d" ]; then
     fi
     
     # 1. Ensure required tools are installed
-    if ! command -v zip &> /dev/null || ! command -v gh &> /dev/null || ! command -v git &> /dev/null || { [ "$BUILD_MESA_RELEASE_ASSET" -eq 1 ] && ! command -v curl &> /dev/null; }; then
-        echo -e "${YELLOW}Installing required dev packages (zip, gh, git, curl)...${RESET}"
-        pkg install zip gh git curl -y
+    if ! command -v zip &> /dev/null || ! command -v gh &> /dev/null || ! command -v git &> /dev/null; then
+        echo -e "${YELLOW}Installing required dev packages (zip, gh, git)...${RESET}"
+        pkg install zip gh git -y
     fi
     
     cd "$REPO_DIR" || exit 1
@@ -90,15 +92,6 @@ if [ "$1" == "-d" ]; then
             echo -e "${RED}Tag cannot be empty. Aborting.${RESET}"
             exit 1
         fi
-
-        if [ "$BUILD_MESA_RELEASE_ASSET" -eq 1 ]; then
-            echo -e "${YELLOW}Building Mesa release asset...${RESET}"
-            bash "$REPO_DIR/scripts/bundle_mesa.sh"
-            if [ ! -f "$REPO_DIR/mesa-debs-trixie.zip" ]; then
-                echo -e "${RED}Mesa bundle was not created. Release cancelled.${RESET}"
-                exit 1
-            fi
-        fi
         
         # Create the ZIP archive
         ZIP_NAME="Chroot.Automated.Script.zip"
@@ -113,11 +106,7 @@ if [ "$1" == "-d" ]; then
         
         # Create GitHub Release
         echo -e "${YELLOW}Creating GitHub Release V${rel_tag}...${RESET}"
-        if [ -f "mesa-debs-trixie.zip" ]; then
-            gh release create "$rel_tag" "$ZIP_NAME" "mesa-debs-trixie.zip" --title "V${rel_tag}" --notes "Automated release V${rel_tag}"
-        else
-            gh release create "$rel_tag" "$ZIP_NAME" --title "V${rel_tag}" --notes "Automated release V${rel_tag}"
-        fi
+        gh release create "$rel_tag" "$ZIP_NAME" --title "V${rel_tag}" --notes "Automated release V${rel_tag}"
         
         # Clean up local zip
         rm -f "$ZIP_NAME"

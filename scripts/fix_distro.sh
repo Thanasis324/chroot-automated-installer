@@ -42,6 +42,10 @@ print_divider() {
     echo -e "${YELLOW}${BOLD}${divider}${RESET}"
 }
 
+PREFIX_ROOT="${PREFIX:-/data/data/com.termux/files/usr}"
+PREFIX_BIN="$PREFIX_ROOT/bin"
+export PATH="$PREFIX_BIN:$HOME/.local/bin:$HOME/bin:$PATH:/system/bin:/system/xbin"
+
 if command -v chroot-distro &> /dev/null; then
     DISTRO_CMD="chroot-distro"
 else
@@ -205,12 +209,6 @@ else
 fi
 
 SETUP_B64=$(base64 -w0 "$DISTRO_SETUP_SCRIPT" 2>/dev/null || base64 "$DISTRO_SETUP_SCRIPT" | tr -d '\r\n')
-
-# Inject local Mesa drivers zip if it exists (for offline/developer testing)
-ROOTFS_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/lib/chroot-distro/installed-rootfs/$SELECTED_DISTRO"
-if [ -d "$ROOTFS_DIR/tmp" ] && [ -f "$SCRIPT_DIR/mesa-debs-trixie.zip" ]; then
-    cp "$SCRIPT_DIR/mesa-debs-trixie.zip" "$ROOTFS_DIR/tmp/mesa-debs-trixie.zip" 2>/dev/null || true
-fi
 
 echo -e "\n${YELLOW}${BOLD}=== Applying Distro Repair for ${SELECTED_DISTRO^^} ===${RESET}"
 $DISTRO_CMD login "$SELECTED_DISTRO" --user root -- bash -c "
